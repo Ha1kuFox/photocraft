@@ -28,6 +28,8 @@ pub fn alias(name: &str) -> Option<(&'static str, bool)> {
         "breezedark" | "kdedark" | "plasmadark" => ("craft.breeze", true),
         "softdark" => ("craft.soft", true),
         "softlight" => ("craft.soft", false),
+        // PhotoCraft's live desktop theme, owned by the UI rather than the suite catalog.
+        "noctalia" | "noctalialive" | "matugen" | "matugenlive" => ("photocraft.noctalia", true),
         _ => return None,
     })
 }

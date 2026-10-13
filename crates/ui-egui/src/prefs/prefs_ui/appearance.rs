@@ -82,6 +82,11 @@ pub fn theme_menu(app: &PhotocraftApp) -> ThemeMenu {
             rows.push(ThemeRow::new(theme.id().clone(), dark, app.framework.theme_name(theme.id(), dark)));
         }
     }
+    // The live desktop theme is app-owned, so it is not in the suite's catalog, but it belongs
+    // in the Appearance menu next to the dark themes.
+    if let Ok(id) = ThemeId::parse(crate::theme::NOCTALIA_THEME_ID) {
+        rows.push(ThemeRow::new(id, true, "Noctalia (Live)".to_owned()));
+    }
     let current = match interface.appearance_mode {
         AppearanceMode::Auto => ThemeChoice::System,
         _ => {

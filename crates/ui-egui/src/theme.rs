@@ -24,6 +24,10 @@ use egui::{Color32, CornerRadius, FontData, FontFamily, FontId, Stroke, TextStyl
 use photocraft_engine::prefs::UiFontSize;
 use std::sync::Arc;
 
+/// The id of the live desktop theme. It is app-owned (not a `craft.` suite theme), so it works
+/// without a suite theme file and can still be picked through the Appearance menu and `ui.set`.
+pub const NOCTALIA_THEME_ID: &str = "photocraft.noctalia";
+
 /// PhotoCraft's own palettes: the suite themes it draws itself, each in the mode it has one for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Palette {
@@ -94,6 +98,7 @@ impl Palette {
             Palette::BreezeDark => ("craft.breeze", true),
             Palette::SoftDark => ("craft.soft", true),
             Palette::SoftLight => ("craft.soft", false),
+            Palette::Noctalia => (NOCTALIA_THEME_ID, true),
         }
     }
 
@@ -113,6 +118,7 @@ impl Palette {
             Palette::BreezeDark => "Breeze Dark",
             Palette::SoftDark => "Soft Dark",
             Palette::SoftLight => "Soft Light",
+            Palette::Noctalia => "Noctalia (Live)",
         }
     }
 
@@ -190,6 +196,12 @@ palette_themes! {
 }
 
 impl AppTheme {
+    /// The live desktop theme: Studio layout, colours read from noctalia's token file when it
+    /// exists (see [`noctalia`]). It is offered next to the dark palettes in Appearance.
+    pub fn noctalia() -> Self {
+        Self::from(Palette::Noctalia)
+    }
+
     /// The themes PhotoCraft has palettes for, in the order of its Appearance settings.
     pub fn all() -> [AppTheme; 14] {
         Palette::ALL.map(AppTheme::from)
@@ -212,6 +224,9 @@ impl AppTheme {
 
     /// PhotoCraft's palette for suite theme `id` in the dark or light mode, if it has one.
     pub fn palette(id: &ThemeId, dark: bool) -> Option<Self> {
+        if dark && id.as_str() == NOCTALIA_THEME_ID {
+            return Some(Self::noctalia());
+        }
         Palette::of(id, dark).map(Self::from)
     }
 
@@ -222,6 +237,9 @@ impl AppTheme {
 
     /// The name PhotoCraft's Appearance settings give a theme it has a palette for.
     pub fn palette_label(id: &str, dark: bool) -> Option<&'static str> {
+        if dark && id == NOCTALIA_THEME_ID {
+            return Some("Noctalia (Live)");
+        }
         Palette::ALL.into_iter().find(|p| p.theme() == (id, dark)).map(Palette::label)
     }
 
@@ -835,15 +853,10 @@ impl Tokens {
                 caption_close_text: Color32::WHITE,
                 scrim: Color32::from_black_alpha(90),
             },
-            // Live desktop theme (noctalia/matugen). `for_kind` stays pure and returns the
-            // static fallback: the Studio layout (radii, no bevel, Studio chips and tab
-            // strips) in the Studio palette. `apply` overlays the live colours from
-            // `noctalia::tokens()` when the file exists (see the `noctalia` module).
-            ThemeKind::Noctalia => {
-                let mut t = Tokens::for_kind(ThemeKind::Studio);
-                t.kind = ThemeKind::Noctalia;
-                t
-            }
+            // Live desktop theme (noctalia/matugen). The pure palette is the Studio layout
+            // (radii, no bevel, Studio chips and tab strips); `apply` overlays the live colours
+            // from `noctalia::tokens()` when the file exists (see the `noctalia` module).
+            Palette::Noctalia => Tokens::for_palette(Palette::Studio),
             // Ethan Schoonover's Solarized Dark palette: base03 canvas, base02 surfaces, base0
             // body text and the Solarized blue accent. https://ethanschoonover.com/solarized/
             // (MIT; see LICENSE-solarized.txt)
@@ -1163,6 +1176,15 @@ pub fn apply(ctx: &egui::Context, theme: &AppTheme) {
     // including when an integration or restored egui state pinned its own theme preference.
     ctx.set_theme(egui::ThemePreference::System);
     let t = theme.tokens();
+    // The live desktop theme reads its colours from noctalia's file; a missing or malformed
+    // file keeps the static Studio fallback (never a panic, never an empty UI). Web builds
+    // have no settings files, so they keep the base.
+    #[cfg(not(target_arch = "wasm32"))]
+    let t = if theme.id().as_str() == NOCTALIA_THEME_ID {
+        noctalia::tokens().unwrap_or(t)
+    } else {
+        t
+    };
     ctx.data_mut(|d| d.insert_temp(egui::Id::unique("photocraft-theme"), t));
     let mut v = if t.dark() { Visuals::dark() } else { Visuals::light() };
     v.panel_fill = t.chrome;
@@ -1263,7 +1285,7 @@ mod tests;
 /// `"#rrggbb"`/`"#rrggbbaa"` values (radii and layout flags stay on the Studio base).
 #[cfg(not(target_arch = "wasm32"))]
 pub mod noctalia {
-    use super::{ThemeKind, Tokens};
+    use super::{NOCTALIA_THEME_ID, Palette, Tokens};
     use std::ffi::OsString;
     use std::path::PathBuf;
 
@@ -1307,7 +1329,7 @@ pub mod noctalia {
         if !v.is_object() {
             return None;
         }
-        let mut t = Tokens::for_kind(ThemeKind::Noctalia);
+        let mut t = Tokens::for_palette(Palette::Noctalia);
         let unknown = super::apply_overrides(&mut t, v);
         if !unknown.is_empty() {
             log::warn!("noctalia theme: unknown token keys: {unknown:?}");
@@ -1371,7 +1393,6 @@ pub(crate) fn apply_overrides(t: &mut Tokens, v: &serde_json::Value) -> Vec<Stri
             caption_close_text,
             chrome,
             canvas,
-            canvas_dot,
             dock,
             card,
             card_border,
@@ -1436,7 +1457,11 @@ pub mod live {
 
         /// Re-apply overrides if the file changed. Returns true when tokens were updated.
         pub fn poll(&mut self, ctx: &egui::Context, theme: &super::AppTheme) -> bool {
-            let Some(path) = &self.path else { return false };
+            // A manually pointed file (debug) wins over the theme's own live file.
+            let path = self.path.clone().or_else(|| {
+                (theme.id().as_str() == super::NOCTALIA_THEME_ID).then(super::noctalia::path).flatten()
+            });
+            let Some(path) = path else { return false };
             let now = ctx.input(|i| i.time);
             if now - self.last_check < 0.4 {
                 ctx.request_repaint_after(std::time::Duration::from_millis(400));
@@ -1450,9 +1475,9 @@ pub mod live {
                 return false;
             }
             self.stamp = stamp;
-            if kind == super::ThemeKind::Noctalia {
+            if theme.id().as_str() == super::NOCTALIA_THEME_ID && self.path.is_none() {
                 // `apply` overlays the file itself; a malformed file keeps the fallback.
-                super::apply(ctx, kind);
+                super::apply(ctx, theme);
                 return true;
             }
             let Ok(text) = std::fs::read_to_string(&path) else { return false };

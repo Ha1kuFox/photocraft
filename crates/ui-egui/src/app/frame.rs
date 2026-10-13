@@ -73,8 +73,11 @@ impl PhotocraftApp {
         self.sync_views();
         crate::memory_warning::tick(self, now);
         self.check_gpu(ctx);
-        #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
-        let _ = self.live_tokens.poll(ctx, &self.ui.theme);
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.live_tokens.poll(ctx, &self.ui.theme) {
+            // The checker texture was cached for the old colours.
+            self.checker = None;
+        }
         #[cfg(not(target_arch = "wasm32"))]
         self.drain_control(ctx);
         view_cmds::leave_full_screen_without_document(self);

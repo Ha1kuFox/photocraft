@@ -512,6 +512,10 @@ impl Framework {
 
     /// Whether theme `id` can show now: the suite has it as a built-in or a loaded library theme.
     pub(crate) fn theme_availability(&self, id: &ThemeId) -> Result<(), ThemeUnavailable> {
+        // The live desktop theme is app-owned: no suite definition to load.
+        if id.as_str() == crate::theme::NOCTALIA_THEME_ID {
+            return Ok(());
+        }
         if self.suite.has_theme(id) {
             Ok(())
         } else if self.suite.is_loading(id) {
