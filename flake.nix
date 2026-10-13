@@ -26,6 +26,8 @@
             "clippy"
             "rustfmt"
           ];
+          # docs/development.md prerequisites: the web/wasm target (cargo xtask wasm).
+          targets = [ "wasm32-unknown-unknown" ];
         };
         nativeBuildInputs = with pkgs; [
           pkg-config

@@ -108,6 +108,7 @@ fn selected_theme(interface: &prefs::Interface, system: Option<egui::Theme>) -> 
             DarkTheme::AdwaitaDark => ThemeKind::AdwaitaDark,
             DarkTheme::BreezeDark => ThemeKind::BreezeDark,
             DarkTheme::SoftDark => ThemeKind::SoftDark,
+            DarkTheme::Noctalia => ThemeKind::Noctalia,
         }
     }
 }
@@ -145,6 +146,7 @@ const DARK_THEME_OPTIONS: &[(&str, ThemeKind)] = &[
     ("adwaitaDark", ThemeKind::AdwaitaDark),
     ("breezeDark", ThemeKind::BreezeDark),
     ("softDark", ThemeKind::SoftDark),
+    ("noctalia", ThemeKind::Noctalia),
 ];
 
 fn favorite_theme_groups(favorites: &[SavedTheme]) -> (Vec<ThemeKind>, Vec<ThemeKind>) {
@@ -2098,6 +2100,7 @@ mod tests {
             ("breezeDark", ThemeKind::BreezeDark, AppearanceMode::Dark),
             ("softLight", ThemeKind::SoftLight, AppearanceMode::Light),
             ("softDark", ThemeKind::SoftDark, AppearanceMode::Dark),
+            ("noctalia", ThemeKind::Noctalia, AppearanceMode::Dark),
         ] {
             app.run("prefs.set", json!({"path": "interface.theme", "value": id})).unwrap();
             tick(&mut app, &ctx);
@@ -2108,7 +2111,7 @@ mod tests {
         }
         // The two slots are independent: choosing the dark one left the light choice alone.
         assert_eq!(app.session.prefs().interface.light_theme, LightTheme::SoftLight);
-        assert_eq!(app.session.prefs().interface.dark_theme, DarkTheme::SoftDark);
+        assert_eq!(app.session.prefs().interface.dark_theme, DarkTheme::Noctalia);
     }
 
     #[test]
@@ -2216,7 +2219,13 @@ mod tests {
             for appearance in [Some(egui::Theme::Dark), Some(egui::Theme::Light), Some(egui::Theme::Dark), None] {
                 appearance_frame(&mut app, &ctx, appearance);
                 assert_palette(&ctx, kind);
-                assert_eq!(Tokens::get(&ctx), Tokens::for_kind(kind));
+                // Noctalia publishes its live file when one parses (see the theme tests).
+                let expected = if kind == ThemeKind::Noctalia {
+                    crate::theme::noctalia::tokens().unwrap_or_else(|| Tokens::for_kind(kind))
+                } else {
+                    Tokens::for_kind(kind)
+                };
+                assert_eq!(Tokens::get(&ctx), expected);
                 assert_eq!(app.ui.theme, kind);
                 assert_eq!(app.session.prefs().interface, interface);
                 assert_eq!(app.session.prefs.rev(), revision);

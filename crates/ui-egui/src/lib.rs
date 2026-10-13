@@ -742,7 +742,7 @@ pub struct PhotocraftApp {
     pub background_jobs: bool,
     /// Background job bookkeeping: opening tabs, control replies waiting on a job.
     pub jobs: jobs_ui::JobsUi,
-    #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+    #[cfg(not(target_arch = "wasm32"))]
     live_tokens: theme::live::LiveTokens,
 }
 
@@ -868,7 +868,7 @@ impl PhotocraftApp {
             stylus: Default::default(),
             background_jobs: false,
             jobs: Default::default(),
-            #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+            #[cfg(not(target_arch = "wasm32"))]
             live_tokens: theme::live::LiveTokens::from_env(),
         };
         // Saved preferences are in place before the first frame; recovery starts in upkeep.
@@ -1668,7 +1668,7 @@ impl eframe::App for PhotocraftApp {
         self.sync_views();
         crate::type_font_preview::follow_hover(self, ctx);
         self.check_gpu(ctx);
-        #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+        #[cfg(not(target_arch = "wasm32"))]
         if self.live_tokens.poll(ctx, self.ui.theme) {
             self.checker = None;
         }

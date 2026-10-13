@@ -52,10 +52,14 @@ pub enum ThemeKind {
     SoftDark,
     /// A low-contrast light theme: pale violet-grey surfaces, softened dark text and a periwinkle accent.
     SoftLight,
+    /// Live desktop theme: the Studio layout recoloured from noctalia's (matugen) scheme
+    /// (`noctalia-tokens.json` in the settings directory, rewritten on every wallpaper or
+    /// scheme change; polled live, with the static fallback below while the file is absent).
+    Noctalia,
 }
 
 impl ThemeKind {
-    pub const ALL: [ThemeKind; 14] = [
+    pub const ALL: [ThemeKind; 15] = [
         ThemeKind::Pro,
         ThemeKind::ProMedium,
         ThemeKind::ProLightGray,
@@ -70,6 +74,7 @@ impl ThemeKind {
         ThemeKind::BreezeDark,
         ThemeKind::SoftDark,
         ThemeKind::SoftLight,
+        ThemeKind::Noctalia,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -87,6 +92,7 @@ impl ThemeKind {
             ThemeKind::BreezeDark => "Breeze Dark",
             ThemeKind::SoftDark => "Soft Dark",
             ThemeKind::SoftLight => "Soft Light",
+            ThemeKind::Noctalia => "Noctalia (Live)",
         }
     }
     /// The canonical name: `ui.set {theme}` accepts it and the Window › Theme commands are
@@ -107,6 +113,7 @@ impl ThemeKind {
             ThemeKind::BreezeDark => "breezeDark",
             ThemeKind::SoftDark => "softDark",
             ThemeKind::SoftLight => "softLight",
+            ThemeKind::Noctalia => "noctalia",
         }
     }
     /// Photoshop-grammar layout (tab strips, flat panels): the four Pro brightness levels.
@@ -133,6 +140,7 @@ impl ThemeKind {
             "breezedark" | "kdedark" | "plasmadark" => Some(ThemeKind::BreezeDark),
             "softdark" => Some(ThemeKind::SoftDark),
             "softlight" => Some(ThemeKind::SoftLight),
+            "noctalia" | "noctalialive" | "matugen" | "matugenlive" => Some(ThemeKind::Noctalia),
             _ => None,
         }
     }
@@ -699,6 +707,15 @@ impl Tokens {
                 caption_close_text: Color32::WHITE,
                 scrim: Color32::from_black_alpha(90),
             },
+            // Live desktop theme (noctalia/matugen). `for_kind` stays pure and returns the
+            // static fallback: the Studio layout (radii, no bevel, Studio chips and tab
+            // strips) in the Studio palette. `apply` overlays the live colours from
+            // `noctalia::tokens()` when the file exists (see the `noctalia` module).
+            ThemeKind::Noctalia => {
+                let mut t = Tokens::for_kind(ThemeKind::Studio);
+                t.kind = ThemeKind::Noctalia;
+                t
+            }
             // Ethan Schoonover's Solarized Dark palette: base03 canvas, base02 surfaces, base0
             // body text and the Solarized blue accent. https://ethanschoonover.com/solarized/
             // (MIT; see LICENSE-solarized.txt)
@@ -818,6 +835,7 @@ impl Tokens {
                 | ThemeKind::AdwaitaDark
                 | ThemeKind::BreezeDark
                 | ThemeKind::SoftDark
+                | ThemeKind::Noctalia
         )
     }
 }
@@ -976,6 +994,11 @@ pub fn apply(ctx: &egui::Context, kind: ThemeKind) {
     // including when an integration or restored egui state pinned its own theme preference.
     ctx.set_theme(egui::ThemePreference::System);
     let t = Tokens::for_kind(kind);
+    // The live desktop theme reads its colours from noctalia's file; a missing or malformed
+    // file keeps the static fallback (never a panic, never an empty UI). Web builds have no
+    // settings files, so they keep the base.
+    #[cfg(not(target_arch = "wasm32"))]
+    let t = if kind == ThemeKind::Noctalia { noctalia::tokens().unwrap_or(t) } else { t };
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("photocraft-theme"), t));
     let mut v = if t.dark() { Visuals::dark() } else { Visuals::light() };
     v.panel_fill = t.chrome;
@@ -1219,9 +1242,17 @@ mod tests {
             let ctx = egui::Context::default();
             ctx.run_ui(egui::RawInput { system_theme: Some(egui::Theme::Dark), ..Default::default() }, |ui| apply(ui.ctx(), kind)).textures_delta.clear();
             let expected = ctx.global_style();
+            // Noctalia overlays its live file at apply() time, so the published tokens match
+            // that file when it parses (e.g. on a machine with noctalia running) and the
+            // static fallback otherwise.
+            let expected_tokens = if kind == ThemeKind::Noctalia {
+                super::noctalia::tokens().unwrap_or_else(|| Tokens::for_kind(kind))
+            } else {
+                Tokens::for_kind(kind)
+            };
             for appearance in [Some(egui::Theme::Light), Some(egui::Theme::Dark), None] {
                 ctx.run_ui(egui::RawInput { system_theme: appearance, ..Default::default() }, |_| {}).textures_delta.clear();
-                assert_eq!(Tokens::get(&ctx), Tokens::for_kind(kind));
+                assert_eq!(Tokens::get(&ctx), expected_tokens);
                 assert_eq!(ctx.global_style(), expected, "{kind:?} changed with {appearance:?}");
                 assert_eq!(ctx.style_of(egui::Theme::Light), expected);
                 assert_eq!(ctx.style_of(egui::Theme::Dark), expected);
@@ -1316,6 +1347,55 @@ mod tests {
     }
 
     #[test]
+    fn noctalia_theme_parses_and_follows_the_noctalia_file() {
+        let kind = ThemeKind::Noctalia;
+        assert_eq!(ThemeKind::from_name(kind.id()), Some(kind));
+        assert_eq!(ThemeKind::from_name(kind.label()), Some(kind));
+        for alias in ["noctalia", "Noctalia (Live)", "noctalia-live", "matugen", "matugen live"] {
+            assert_eq!(ThemeKind::from_name(alias), Some(kind), "{alias}");
+        }
+        assert!(ThemeKind::ALL.contains(&kind));
+        // Pure fallback: the Studio layout (radii, chips, tab strips) with the Studio palette.
+        let t = Tokens::for_kind(kind);
+        assert_eq!(t.kind, kind);
+        assert!(t.dark());
+        assert!(!t.pro && !t.bevel && t.round_chips);
+        let mut studio = Tokens::for_kind(ThemeKind::Studio);
+        studio.kind = ThemeKind::Noctalia;
+        assert_eq!(t, studio);
+        // AA body text on the resting surfaces, like the other Studio-layout themes.
+        for surface in [t.chrome, t.dock, t.card, t.field] {
+            assert!(contrast(t.text, surface) >= 4.5, "text on {surface:?}");
+            assert!(contrast(t.text_dim, surface) >= 4.5, "dim text on {surface:?}");
+            assert!(contrast(t.primary_text, t.primary_bg) >= 3.0, "primary button label");
+        }
+    }
+
+    #[test]
+    fn noctalia_tokens_map_the_generated_file() {
+        // Shape of ~/.config/photocraft/noctalia-tokens.json as noctalia's template renders it.
+        let v = serde_json::json!({
+            "chrome": "#2a1d19", "card": "#251915", "text": "#f6ddd7",
+            "accent": "#ffb59f", "accent_text": "#5e1700",
+            "primary_bg": "#ffb59f", "primary_text": "#5e1700",
+            "warning": "#e1c46b", "histogram_bg": "#170b08", "unknown_future_key": "#000000",
+        });
+        let t = super::noctalia::tokens_from_value(&v).expect("object parses");
+        assert_eq!(t.kind, ThemeKind::Noctalia);
+        assert_eq!(t.accent, Color32::from_rgb(0xff, 0xb5, 0x9f));
+        assert_eq!(t.accent_text, Color32::from_rgb(0x5e, 0x17, 0x00));
+        assert_eq!(t.histogram_bg, Color32::from_rgb(0x17, 0x0b, 0x08));
+        // Unmapped fields stay on the Studio-layout base.
+        assert_eq!(t.radius, Tokens::for_kind(ThemeKind::Studio).radius);
+        assert!(!t.pro && !t.bevel);
+        // Garbage is a fallback, never a panic.
+        assert!(super::noctalia::tokens_from_value(&serde_json::json!("nope")).is_none());
+        assert!(super::noctalia::tokens_from_value(&serde_json::json!([1, 2])).is_none());
+        let base = Tokens::for_kind(ThemeKind::Noctalia);
+        assert_eq!(super::noctalia::tokens_from_value(&serde_json::json!({})), Some(base));
+    }
+
+    #[test]
     fn breeze_themes_parse_and_meet_text_contrast() {
         for (kind, aliases) in [
             (ThemeKind::BreezeLight, ["breeze", "Breeze Light", "breeze_light", "kde", "plasma"]),
@@ -1378,15 +1458,168 @@ mod tests {
     }
 }
 
+/// Live desktop theme from noctalia (matugen): a community template in noctalia rewrites
+/// `noctalia-tokens.json` in the settings directory on every wallpaper or scheme change, and
+/// the app polls it (see `live::LiveTokens`). The file holds `Tokens` field names with
+/// `"#rrggbb"`/`"#rrggbbaa"` values (radii and layout flags stay on the Studio base).
+#[cfg(not(target_arch = "wasm32"))]
+pub mod noctalia {
+    use super::{ThemeKind, Tokens};
+    use std::ffi::OsString;
+    use std::path::PathBuf;
+
+    /// File name in the settings directory.
+    pub const FILE_NAME: &str = "noctalia-tokens.json";
+
+    /// Settings directory from `env` (injectable for tests), mirroring the desktop app's
+    /// `app_dirs`: `PHOTOCRAFT_CONFIG_DIR` first, then the platform convention.
+    pub fn dir(env: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+        if let Some(d) = env("PHOTOCRAFT_CONFIG_DIR").filter(|d| !d.is_empty()) {
+            return Some(PathBuf::from(d));
+        }
+        if cfg!(target_os = "macos") {
+            return env("HOME").filter(|h| !h.is_empty()).map(|h| PathBuf::from(h).join("Library/Application Support/Photocraft"));
+        }
+        if cfg!(windows) {
+            return env("APPDATA").filter(|a| !a.is_empty()).map(|a| PathBuf::from(a).join("Photocraft"));
+        }
+        let home = env("HOME").filter(|h| !h.is_empty()).map(PathBuf::from);
+        env("XDG_CONFIG_HOME")
+            .filter(|x| !x.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| home.map(|h| h.join(".config")))
+            .map(|c| c.join("photocraft"))
+    }
+
+    /// Full path of the live tokens file.
+    pub fn path() -> Option<PathBuf> {
+        dir(|k| std::env::var_os(k)).map(|d| d.join(FILE_NAME))
+    }
+
+    fn read() -> Option<serde_json::Value> {
+        let text = std::fs::read_to_string(path()?).ok()?;
+        serde_json::from_str(&text).ok()
+    }
+
+    /// Studio-layout tokens overlaid with the file's colours; `None` when the file is missing
+    /// or malformed (the caller keeps its current tokens).
+    pub fn tokens() -> Option<Tokens> {
+        tokens_from_value(&read()?)
+    }
+
+    /// Overlay a parsed JSON value onto the Noctalia base; `None` for non-objects.
+    pub(crate) fn tokens_from_value(v: &serde_json::Value) -> Option<Tokens> {
+        if !v.is_object() {
+            return None;
+        }
+        let mut t = Tokens::for_kind(ThemeKind::Noctalia);
+        let unknown = super::apply_overrides(&mut t, v);
+        if !unknown.is_empty() {
+            log::warn!("noctalia theme: unknown token keys: {unknown:?}");
+        }
+        Some(t)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::collections::HashMap;
+
+        fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> {
+            let m: HashMap<String, OsString> = pairs.iter().map(|(k, v)| (k.to_string(), OsString::from(v))).collect();
+            move |k: &str| m.get(k).cloned()
+        }
+
+        #[test]
+        fn dir_mirrors_the_desktop_app() {
+            assert_eq!(dir(env_of(&[("PHOTOCRAFT_CONFIG_DIR", "/custom")])), Some(PathBuf::from("/custom")));
+            assert_eq!(
+                dir(env_of(&[("XDG_CONFIG_HOME", "/x"), ("HOME", "/h")])),
+                Some(PathBuf::from("/x/photocraft"))
+            );
+            assert_eq!(dir(env_of(&[("HOME", "/h")])), Some(PathBuf::from("/h/.config/photocraft")));
+            assert_eq!(dir(env_of(&[])), None);
+        }
+    }
+}
+
+/// Parse a `"#rrggbb"` / `"#rrggbbaa"` colour. Native only: web builds have no token files.
+#[cfg(not(target_arch = "wasm32"))]
+fn token_color(v: &serde_json::Value) -> Option<Color32> {
+    let s = v.as_str()?.trim_start_matches('#');
+    let b = |i: usize| u8::from_str_radix(s.get(i..i + 2)?, 16).ok();
+    match s.len() {
+        6 => Some(Color32::from_rgb(b(0)?, b(2)?, b(4)?)),
+        8 => Some(Color32::from_rgba_unmultiplied(b(0)?, b(2)?, b(4)?, b(6)?)),
+        _ => None,
+    }
+}
+
+/// Apply JSON overrides onto tokens; returns unknown keys. Keys are `Tokens` field names;
+/// colours are `"#rrggbb"` / `"#rrggbbaa"`, the rest numbers. Native only (see `token_color`).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn apply_overrides(t: &mut Tokens, v: &serde_json::Value) -> Vec<String> {
+    let mut unknown = Vec::new();
+    let Some(obj) = v.as_object() else { return unknown };
+    for (k, val) in obj {
+        macro_rules! c {
+            ($($f:ident),*) => {
+                match k.as_str() {
+                    $(stringify!($f) => { if let Some(c) = token_color(val) { t.$f = c; } })*
+                    "radius_sm" => { if let Some(x) = val.as_f64() { t.radius_sm = x as f32; } }
+                    "radius" => { if let Some(x) = val.as_f64() { t.radius = x as f32; } }
+                    "radius_lg" => { if let Some(x) = val.as_f64() { t.radius_lg = x as f32; } }
+                    "histogram_level" => { if let Some(x) = val.as_u64() { t.histogram_level = x.min(255) as u8; } }
+                    _ => unknown.push(k.clone()),
+                }
+            };
+        }
+        c!(
+            caption_close,
+            caption_close_text,
+            chrome,
+            canvas,
+            canvas_dot,
+            dock,
+            card,
+            card_border,
+            field,
+            field_border,
+            histogram_bg,
+            hover,
+            pressed,
+            text,
+            text_dim,
+            text_faint,
+            icon,
+            accent,
+            accent_soft,
+            accent_border,
+            accent_text,
+            separator,
+            shadow,
+            primary_bg,
+            primary_text,
+            danger,
+            warning,
+            tab_strip,
+            row_selected,
+            scrim
+        );
+    }
+    unknown
+}
+
 /// Development feature: live design-token overrides.
 ///
 /// Set `PHOTOCRAFT_THEME_FILE=/path/tokens.json` in a debug build; the file is polled and applied
 /// on change, so colours, radii and sizes can be tuned without recompiling. Keys are `Tokens` field
 /// names; values are `"#rrggbb"`, `"#rrggbbaa"` or numbers. Compiled out of release builds.
-#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+/// In release builds the same poller watches the noctalia theme's own file while that theme is
+/// active (see the `noctalia` module).
+#[cfg(not(target_arch = "wasm32"))]
 pub mod live {
     use super::Tokens;
-    use egui::Color32;
     use std::time::SystemTime;
 
     #[derive(Default)]
@@ -1398,12 +1631,26 @@ pub mod live {
 
     impl LiveTokens {
         pub fn from_env() -> Self {
-            Self { path: std::env::var_os("PHOTOCRAFT_THEME_FILE").map(Into::into), ..Default::default() }
+            Self {
+                // A manually pointed theme file is a debug-build tool; release builds only
+                // watch the noctalia theme's own file (see `poll`).
+                #[cfg(debug_assertions)]
+                path: std::env::var_os("PHOTOCRAFT_THEME_FILE").map(Into::into),
+                #[cfg(not(debug_assertions))]
+                path: None,
+                ..Default::default()
+            }
         }
 
-        /// Re-apply overrides if the file changed. Returns true when tokens were updated.
+        /// Re-apply overrides if the watched file changed. Returns true when tokens were
+        /// updated. Without a file to watch (release builds off the Noctalia theme, or no
+        /// `PHOTOCRAFT_THEME_FILE` in debug) this is a cheap no-op that requests no repaint.
         pub fn poll(&mut self, ctx: &egui::Context, kind: super::ThemeKind) -> bool {
-            let Some(path) = &self.path else { return false };
+            // A manually pointed file (debug) wins over the theme's own live file.
+            let path = self.path.clone().or_else(|| {
+                (kind == super::ThemeKind::Noctalia).then(super::noctalia::path).flatten()
+            });
+            let Some(path) = path else { return false };
             let now = ctx.input(|i| i.time);
             if now - self.last_check < 0.4 {
                 ctx.request_repaint_after(std::time::Duration::from_millis(400));
@@ -1411,18 +1658,23 @@ pub mod live {
             }
             self.last_check = now;
             ctx.request_repaint_after(std::time::Duration::from_millis(400));
-            let Ok(meta) = std::fs::metadata(path) else { return false };
+            let Ok(meta) = std::fs::metadata(&path) else { return false };
             let stamp = meta.modified().ok();
             if stamp == self.stamp {
                 return false;
             }
             self.stamp = stamp;
-            let Ok(text) = std::fs::read_to_string(path) else { return false };
+            if kind == super::ThemeKind::Noctalia {
+                // `apply` overlays the file itself; a malformed file keeps the fallback.
+                super::apply(ctx, kind);
+                return true;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else { return false };
             match serde_json::from_str::<serde_json::Value>(&text) {
                 Ok(v) => {
                     super::apply(ctx, kind);
                     let mut t = Tokens::get(ctx);
-                    let unknown = apply_overrides(&mut t, &v);
+                    let unknown = super::apply_overrides(&mut t, &v);
                     ctx.data_mut(|d| d.insert_temp(egui::Id::new("photocraft-theme"), t));
                     if !unknown.is_empty() {
                         log::warn!("unknown token keys: {unknown:?}");
@@ -1437,77 +1689,23 @@ pub mod live {
         }
     }
 
-    fn color(v: &serde_json::Value) -> Option<Color32> {
-        let s = v.as_str()?.trim_start_matches('#');
-        let b = |i: usize| u8::from_str_radix(s.get(i..i + 2)?, 16).ok();
-        match s.len() {
-            6 => Some(Color32::from_rgb(b(0)?, b(2)?, b(4)?)),
-            8 => Some(Color32::from_rgba_unmultiplied(b(0)?, b(2)?, b(4)?, b(6)?)),
-            _ => None,
-        }
-    }
-
-    /// Apply JSON overrides onto tokens; returns unknown keys.
-    pub fn apply_overrides(t: &mut Tokens, v: &serde_json::Value) -> Vec<String> {
-        let mut unknown = Vec::new();
-        let Some(obj) = v.as_object() else { return unknown };
-        for (k, val) in obj {
-            macro_rules! c {
-                ($($f:ident),*) => {
-                    match k.as_str() {
-                        $(stringify!($f) => { if let Some(c) = color(val) { t.$f = c; } })*
-                        "radius_sm" => { if let Some(x) = val.as_f64() { t.radius_sm = x as f32; } }
-                        "radius" => { if let Some(x) = val.as_f64() { t.radius = x as f32; } }
-                        "radius_lg" => { if let Some(x) = val.as_f64() { t.radius_lg = x as f32; } }
-                        _ => unknown.push(k.clone()),
-                    }
-                };
-            }
-            c!(
-                caption_close,
-                caption_close_text,
-                chrome,
-                canvas,
-                canvas_dot,
-                dock,
-                card,
-                card_border,
-                field,
-                field_border,
-                hover,
-                pressed,
-                text,
-                text_dim,
-                text_faint,
-                icon,
-                accent,
-                accent_soft,
-                accent_border,
-                accent_text,
-                separator,
-                shadow,
-                primary_bg,
-                primary_text,
-                danger,
-                warning,
-                tab_strip,
-                row_selected,
-                scrim
-            );
-        }
-        unknown
-    }
-
     #[cfg(test)]
     mod tests {
-        use super::*;
+        use super::super::{ThemeKind, apply_overrides};
+        use super::Tokens;
+        use egui::Color32;
 
         #[test]
         fn overrides_apply_and_report_unknown() {
-            let mut t = Tokens::for_kind(super::super::ThemeKind::Pro);
-            let unknown = apply_overrides(&mut t, &serde_json::json!({"card": "#102030", "radius": 9, "nope": 1}));
+            let mut t = Tokens::for_kind(ThemeKind::Pro);
+            let unknown = apply_overrides(
+                &mut t,
+                &serde_json::json!({"card": "#102030", "radius": 9, "histogram_bg": "#010203", "histogram_level": 200, "nope": 1}),
+            );
             assert_eq!(t.card, Color32::from_rgb(16, 32, 48));
             assert_eq!(t.radius, 9.0);
+            assert_eq!(t.histogram_bg, Color32::from_rgb(1, 2, 3));
+            assert_eq!(t.histogram_level, 200);
             assert_eq!(unknown, vec!["nope".to_string()]);
         }
     }
