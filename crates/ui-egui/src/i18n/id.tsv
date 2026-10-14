@@ -1420,6 +1420,12 @@
 	Roundness Jitter	Jitter Kebulatan
 	Rulers & Grids	Penggaris & Grid
 	Sample All Layers	Sampel Semua Layer
+	Expand Area	Perluas Area
+	Close Gaps	Tutup Celah
+	Sample	Sampel
+	Reference Layer	Layer Referensi
+	No reference layer chosen — sampling the current layer	Tidak ada layer referensi yang dipilih — menyampel layer saat ini
+	The reference layer is gone — sampling the current layer	Layer referensi hilang — menyampel layer saat ini
 	Sample:	Sampel:
 	Sampling: Background Swatch	Sampling: Swatch Background
 	Sampling: Continuous	Sampling: Kontinu

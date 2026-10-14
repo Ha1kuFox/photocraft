@@ -1456,6 +1456,12 @@
 	Rulers  (⌘R)	标尺  (⌘R)
 	Rulers & Grids	标尺与网格
 	Sample All Layers	对所有图层采样
+	Expand Area	扩展区域
+	Close Gaps	闭合缺口
+	Sample	采样
+	Reference Layer	参考图层
+	No reference layer chosen — sampling the current layer	未选择参考图层 — 对当前图层采样
+	The reference layer is gone — sampling the current layer	参考图层已消失 — 对当前图层采样
 	Sample:	采样：
 	Sampling: Background Swatch	采样：背景色色板
 	Sampling: Continuous	采样：连续

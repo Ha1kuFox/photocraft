@@ -806,6 +806,12 @@
 	Anti-Alias	Згладжування країв
 	Contiguous	Суміжні
 	Sample All Layers	Зразок з усіх шарів
+	Expand Area	Розширити область
+	Close Gaps	Закрити розриви
+	Sample	Зразок
+	Reference Layer	Опорний шар
+	No reference layer chosen — sampling the current layer	Опорний шар не вибрано — семплюю поточний шар
+	The reference layer is gone — sampling the current layer	Опорний шар зник — семплюю поточний шар
 	Protect Foreground Color	Захистити колір переднього плану
 	Matte	Підкладка
 	Matting	Обробка країв

@@ -1444,6 +1444,12 @@
 	Roundness Jitter	真円率のジッター
 	Rulers & Grids	定規とグリッド
 	Sample All Layers	すべてのレイヤーをサンプル
+	Expand Area	領域を拡張
+	Close Gaps	隙間を閉じる
+	Sample	サンプル
+	Reference Layer	参照レイヤー
+	No reference layer chosen — sampling the current layer	参照レイヤーが未選択 — 現在のレイヤーからサンプル
+	The reference layer is gone — sampling the current layer	参照レイヤーが見つからない — 現在のレイヤーからサンプル
 	Sample:	サンプル:
 	Sampling: Background Swatch	サンプリング: 背景スウォッチ
 	Sampling: Continuous	サンプリング: 連続

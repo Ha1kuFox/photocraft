@@ -1452,6 +1452,12 @@
 	Roundness Jitter	圓度快速變換
 	Rulers & Grids	尺標與格點
 	Sample All Layers	取樣全部圖層
+	Expand Area	擴展區域
+	Close Gaps	閉合缺口
+	Sample	採樣
+	Reference Layer	參考圖層
+	No reference layer chosen — sampling the current layer	未選擇參考圖層 — 對當前圖層採樣
+	The reference layer is gone — sampling the current layer	參考圖層已消失 — 對當前圖層採樣
 	Sample:	取樣：
 	Sampling: Background Swatch	取樣：背景色票
 	Sampling: Continuous	取樣：連續

@@ -1422,6 +1422,12 @@
 	Roundness Jitter	Variação do arredondamento
 	Rulers & Grids	Réguas e grades
 	Sample All Layers	Usar amostra de todas as camadas
+	Expand Area	Expandir área
+	Close Gaps	Fechar lacunas
+	Sample	Amostra
+	Reference Layer	Camada de referência
+	No reference layer chosen — sampling the current layer	Nenhuma camada de referência escolhida — amostrando a camada atual
+	The reference layer is gone — sampling the current layer	A camada de referência sumiu — amostrando a camada atual
 	Sample:	Amostra:
 	Sampling: Background Swatch	Amostragem: amostra do plano de fundo
 	Sampling: Continuous	Amostragem: contínua

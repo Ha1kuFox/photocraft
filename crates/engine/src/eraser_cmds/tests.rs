@@ -268,7 +268,7 @@ fn bench_magic_eraser_24mp() {
     let t0 = std::time::Instant::now();
     let (area, img) = crate::selection_cmds::sample_rgba8(&s, false).unwrap();
     let t1 = t0.elapsed().as_secs_f64() * 1000.0;
-    let region = sel::wand_region(&img, area, (10, 10), 32.0, true, true).unwrap();
+    let region = sel::wand_region(&img, area, (10, 10), 32.0, true, true, 0).unwrap();
     let t2 = t0.elapsed().as_secs_f64() * 1000.0;
     let mut surf = surface(&s).clone();
     photocraft_algo::erase::magic_erase(&mut surf, &region, 1.0, None, None);

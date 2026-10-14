@@ -1211,18 +1211,12 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         }
                     }
                     Tool::PaintBucket if t.pro => {
-                        opt_label(ui, tl!("Fill"));
-                        let mut src = u8::from(app.ui.tool_options.bucket_fill_pattern);
-                        if widgets::dropdown(ui, "bucket-src", &mut src, &[(0u8, tl!("Foreground")), (1, tl!("Pattern"))], 100.0) {
-                            app.ui.tool_options.bucket_fill_pattern = src == 1;
-                        }
-                        opt_label(ui, tl!("Opacity"));
-                        widgets::value_field(ui, &mut app.ui.tool_options.fill_opacity, 1.0..=100.0, "%", 62.0);
-                        opt_label(ui, tl!("Tolerance"));
-                        widgets::value_field(ui, &mut app.ui.tool_options.tolerance, 0.0..=255.0, "", 58.0);
-                        widgets::checkbox(ui, &mut app.ui.tool_options.anti_alias, tl!("Anti-alias"));
-                        widgets::checkbox(ui, &mut app.ui.tool_options.contiguous, tl!("Contiguous"));
-                        widgets::checkbox(ui, &mut app.ui.tool_options.sample_all_layers, tl!("All Layers"));
+                        crate::bucket_ui::options_bar(app, ui);
+                    }
+                    // Studio layout never had bucket options; the same bar applies (with the hint).
+                    Tool::PaintBucket => {
+                        crate::bucket_ui::options_bar(app, ui);
+                        hint(ui, tl!("Click to fill similar colours"));
                     }
                     Tool::Gradient => {
                         // Live "Gradient" (a Gradient Fill layer) or "Classic gradient" (pixels).
@@ -1480,7 +1474,6 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             &[("commit", &crate::shortcuts::pretty("Enter"))],
                         ),
                     ),
-                    Tool::PaintBucket => hint(ui, tl!("Click to fill similar colours")),
                     // Retouching and smart-selection tools draw their bar in `retouch_ui::options_bar`.
                     _ => {}
                 }

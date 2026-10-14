@@ -315,6 +315,12 @@
 	Pressure for Opacity	Πίεση για αδιαφάνεια
 	Rename Tool Preset…	Μετονομασία προεπιλογής εργαλείου…
 	Sample All Layers	Δειγματοληψία όλων των επιπέδων
+	Expand Area	Επέκταση περιοχής
+	Close Gaps	Κλείσιμο κενών
+	Sample	Δείγμα
+	Reference Layer	Στρώμα αναφοράς
+	No reference layer chosen — sampling the current layer	Δεν επιλέχθηκε στρώμα αναφοράς — γίνεται δειγματοληψία του τρέχοντος στρώματος
+	The reference layer is gone — sampling the current layer	Το στρώμα αναφοράς χάθηκε — γίνεται δειγματοληψία του τρέχοντος στρώματος
 	Search commands, tools and panels…	Αναζήτηση εντολών, εργαλείων και πλαισίων…
 	Select Subject	Επιλογή κύριου θέματος
 	Sharpening	Όξυνση

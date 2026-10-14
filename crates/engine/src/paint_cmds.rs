@@ -1,6 +1,7 @@
 //! Paint helpers: Paint Bucket and Gradient tool.
 
 use photocraft_algo::paint::{GradientShape, bucket_fill_inks, bucket_fill_region_inks, bucket_fill_region_src, bucket_fill_src, paint_gradient};
+use photocraft_algo::selection::{dilate_region, wand_region};
 use serde_json::{Value, json};
 
 use crate::commands::{CommandSpec, blend_from_str};
@@ -41,22 +42,68 @@ fn opacity(p: &Value, cmd: &str) -> Result<f32> {
     Ok(crate::eraser_cmds::number(p, cmd, "opacity", 100.0, 1.0..=100.0)? as f32 / 100.0)
 }
 
+/// Where the Paint Bucket reads the fill boundary from: the target layer's own pixels, the
+/// visible composite, or one named layer (Clip Studio's reference layer).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SampleSource {
+    Active,
+    All,
+    Layer(photocraft_doc::LayerId),
+}
+
+/// `sample` (`"active" | "all" | {"layer": id}`, default `"active"`) with the legacy
+/// `sampleAllLayers` bool as an alias for `"all"`. Unknown shapes are an error, never a guess.
+fn sample_source(p: &Value) -> Result<SampleSource> {
+    let bad = |msg: &str| EngineError::BadParams { cmd: "paint.bucket".into(), msg: msg.into() };
+    match p.get("sample") {
+        None => Ok(if b(p, "sampleAllLayers", false) { SampleSource::All } else { SampleSource::Active }),
+        Some(Value::String(s)) if s == "active" => Ok(SampleSource::Active),
+        Some(Value::String(s)) if s == "all" => Ok(SampleSource::All),
+        Some(Value::Object(o)) => match o.get("layer").and_then(Value::as_u64) {
+            Some(id) => Ok(SampleSource::Layer(photocraft_doc::LayerId(id))),
+            None => Err(bad("`sample.layer` must be an unsigned layer id")),
+        },
+        _ => Err(bad("`sample` is `\"active\"`, `\"all\"` or `{\"layer\": id}`")),
+    }
+}
+
 fn bucket(s: &mut Session, p: &Value) -> Result<Value> {
     let fg = s.tools.foreground;
     let c = color(p.get("color"), fg);
     let (x, y) = (f(p, "x", 0.0).floor() as i32, f(p, "y", 0.0).floor() as i32);
     let (tol, contiguous, aa) = (f(p, "tolerance", 32.0), b(p, "contiguous", true), b(p, "antiAlias", true));
     let opacity = opacity(p, "paint.bucket")?;
-    let all = b(p, "sampleAllLayers", false) && crate::channel_cmds::target_of(p) == crate::channel_cmds::Target::Pixels;
+    let expand = crate::eraser_cmds::number(p, "paint.bucket", "expand", 0.0, 0.0..=250.0)? as u32;
+    let close_gap = crate::eraser_cmds::number(p, "paint.bucket", "closeGap", 0.0, 0.0..=100.0)? as u32;
+    let sample = sample_source(p)?;
+    // Alternate sources only shape the region for pixel targets (as `sampleAllLayers` always
+    // did); mask and channel targets sample their own surface.
+    let pixels = crate::channel_cmds::target_of(p) == crate::channel_cmds::Target::Pixels;
     // Other visible layers can define the region, but the fill still writes only to the target.
-    let region = if all {
-        let (area, img) = crate::selection_cmds::sample_rgba8(s, true)?;
-        let region = photocraft_algo::selection::wand_region(&img, area, (x, y), tol, contiguous, aa);
-        drop(img);
-        region
-    } else {
-        None
+    let region = match (sample, pixels) {
+        (SampleSource::Active, _) | (_, false) => None,
+        (SampleSource::All, true) => {
+            let (area, img) = crate::selection_cmds::sample_rgba8(s, true)?;
+            let region = wand_region(&img, area, (x, y), tol, contiguous, aa, close_gap);
+            drop(img);
+            region
+        }
+        (SampleSource::Layer(id), true) => {
+            let d = s.active().ok_or(EngineError::NoDocument)?;
+            let layer = d.doc.layer(id).ok_or_else(|| EngineError::BadParams {
+                cmd: "paint.bucket".into(),
+                msg: format!("reference layer {id:?} not found"),
+            })?;
+            let surf = layer.surface().ok_or_else(|| EngineError::BadParams {
+                cmd: "paint.bucket".into(),
+                msg: format!("reference layer {} has no pixels to sample", layer.name),
+            })?;
+            let area = d.doc.bounds();
+            wand_region(&photocraft_algo::selection::rgba8_image(surf, area), area, (x, y), tol, contiguous, aa, close_gap)
+        }
     };
+    // "Expand" grows the sampled boundary; a missing region (seed outside) stays missing.
+    let region = region.map(|r| dilate_region(&r, expand));
     // Fill source: foreground colour (default) or a pattern (the Paint Bucket "Fill" dropdown).
     let source = p.get("contents").or_else(|| p.get("source")).and_then(Value::as_str).unwrap_or("foreground");
     let pattern = if source == "pattern" {
@@ -74,7 +121,9 @@ fn bucket(s: &mut Session, p: &Value) -> Result<Value> {
         let area = doc.bounds();
         let sel = doc.selection.clone();
         let (surf, lock) = crate::channel_cmds::target_surface(doc, *active, p)?;
-        let ok = if all && region.is_none() {
+        // A sampled region that missed (seed outside) fills nothing, as before.
+        let sampled = !matches!(sample, SampleSource::Active) && pixels;
+        let ok = if sampled && region.is_none() {
             false
         } else if let Some((tile, scale, angle, phase)) = &pattern {
             // Render the pattern over the canvas once, then sample it at each filled pixel.
@@ -86,13 +135,13 @@ fn bucket(s: &mut Session, p: &Value) -> Result<Value> {
                 bucket_fill_region_src(surf, region, opacity, sel.as_ref(), lock, src);
                 true
             } else {
-                bucket_fill_src(surf, area, (x, y), tol, contiguous, aa, opacity, sel.as_ref(), lock, src)
+                bucket_fill_src(surf, area, (x, y), tol, contiguous, aa, opacity, sel.as_ref(), lock, src, close_gap, expand)
             }
         } else if let Some(region) = &region {
             bucket_fill_region_inks(surf, region, opacity, sel.as_ref(), lock, |_, _| c, inks);
             true
         } else {
-            bucket_fill_inks(surf, area, (x, y), tol, contiguous, aa, opacity, sel.as_ref(), lock, |_, _| c, inks)
+            bucket_fill_inks(surf, area, (x, y), tol, contiguous, aa, opacity, sel.as_ref(), lock, |_, _| c, inks, close_gap, expand)
         };
         surf.prune();
         Ok(ok)
@@ -162,7 +211,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Paint Bucket",
             menu: &[],
             shortcut: None,
-            params: r##"{"x":px,"y":px,"tolerance":0..255=32,"contiguous":bool=true,"antiAlias":bool=true,"sampleAllLayers":bool=false,"contents":"foreground|pattern"="foreground","color":"#rrggbb"=foreground,"pattern":id|name (contents=pattern),"scale":%=100,"angle":deg,"opacity":1..100=100,"target":"pixels"|"mask"|"quickMask"|{"channel":i}=Channels panel target}"##,
+            params: r##"{"x":px,"y":px,"tolerance":0..255=32,"contiguous":bool=true,"antiAlias":bool=true,"sampleAllLayers":bool=false,"sample":"active"|"all"|{"layer":id}="active" (sampleAllLayers=true means "all"),"expand":0..250=0 (grow the sampled boundary, px),"closeGap":0..100=0 (gaps up to that wide count as closed, px),"contents":"foreground|pattern"="foreground","color":"#rrggbb"=foreground,"pattern":id|name (contents=pattern),"scale":%=100,"angle":deg,"opacity":1..100=100,"target":"pixels"|"mask"|"quickMask"|{"channel":i}=Channels panel target}"##,
             enabled: crate::commands::has_paintable,
             run: bucket,
             journal: true,
@@ -238,6 +287,78 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn bucket_sample_layer_reads_the_named_layer() {
+        let (mut s, bottom) = bucket_layers(8);
+        // The wall lives on `bottom`; the active layer is empty.
+        s.execute("paint.bucket", json!({"x": 2, "y": 2, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sample": {"layer": bottom.0}})).unwrap();
+        assert_eq!(px(&s, 5, 5), vec![1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(px(&s, 15, 5), vec![0.0; 4], "the named wall bounds the fill");
+        assert_eq!(px(&s, 10, 5), vec![0.0; 4], "wall itself is untouched");
+        // `"all"` matches the legacy flag.
+        assert!(s.undo());
+        s.execute("paint.bucket", json!({"x": 2, "y": 2, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sample": "all"})).unwrap();
+        assert_eq!(px(&s, 15, 5), vec![0.0; 4]);
+        // Unknown shapes and ids are errors, never panics.
+        for bad in [json!({"sample": "bogus"}), json!({"sample": {"layer": "x"}}), json!({"sample": {"layer": 99999}}), json!({"sample": {}})] {
+            assert!(s.execute("paint.bucket", json!({"x": 2, "y": 2, "sample": bad})).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn bucket_sample_layer_needs_pixels() {
+        let (mut s, _) = bucket_layers(8);
+        let group = s.execute("layer.new.group", json!({})).unwrap()["layer"].as_u64().unwrap();
+        assert!(s.execute("paint.bucket", json!({"x": 2, "y": 2, "sample": {"layer": group}})).is_err(), "a group has no pixels to sample");
+    }
+
+    /// A wall with a 2 px hole, on the bottom layer, with an empty active layer above.
+    fn bucket_gap_layers() -> Session {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 20, "height": 10, "background": "white"})).unwrap();
+        s.edit("wall with a hole", |doc, _| {
+            let surf = doc.layers[0].surface_mut().unwrap();
+            surf.fill_rect(Rect::new(10, 0, 11, 4), &[0.0, 0.0, 0.0, 1.0]);
+            surf.fill_rect(Rect::new(10, 6, 11, 10), &[0.0, 0.0, 0.0, 1.0]);
+            Ok(())
+        })
+        .unwrap();
+        s.execute("layer.new.layer", json!({})).unwrap();
+        s
+    }
+
+    #[test]
+    fn bucket_close_gap_plugs_holes_up_to_its_width() {
+        let fill = |s: &mut Session, p: Value| s.execute("paint.bucket", p).unwrap()["filled"].as_bool().unwrap();
+        // Open hole: the fill leaks through to the far side.
+        let mut s = bucket_gap_layers();
+        assert!(fill(&mut s, json!({"x": 2, "y": 5, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sampleAllLayers": true})));
+        assert_eq!(px(&s, 15, 5), vec![1.0, 0.0, 0.0, 1.0], "a 2 px hole leaks without closeGap");
+        // The same hole counts as closed with closeGap = 2.
+        let mut s = bucket_gap_layers();
+        assert!(fill(&mut s, json!({"x": 2, "y": 5, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sampleAllLayers": true, "closeGap": 2})));
+        assert_eq!(px(&s, 5, 5), vec![1.0, 0.0, 0.0, 1.0], "the near side still fills");
+        assert_eq!(px(&s, 15, 5), vec![0.0; 4], "the far side stays empty");
+        // Out-of-range numbers clamp (the codebase convention); wrong types are errors.
+        let mut s = bucket_gap_layers();
+        s.execute("paint.bucket", json!({"x": 2, "y": 5, "closeGap": 101, "expand": -1, "sampleAllLayers": true})).unwrap();
+        assert!(s.execute("paint.bucket", json!({"x": 2, "y": 5, "closeGap": "a lot"})).is_err());
+        assert!(s.execute("paint.bucket", json!({"x": 2, "y": 5, "expand": [2]})).is_err());
+    }
+
+    #[test]
+    fn bucket_expand_grows_past_the_sampled_edge() {
+        // A solid wall (no hole): the left side is bounded at x = 10 either way.
+        let mut s = bucket_layers(8).0;
+        s.execute("paint.bucket", json!({"x": 2, "y": 2, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sampleAllLayers": true})).unwrap();
+        assert_eq!(px(&s, 10, 2), vec![0.0; 4], "the solid wall stops the fill");
+        let mut s = bucket_layers(8).0;
+        s.execute("paint.bucket", json!({"x": 2, "y": 2, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sampleAllLayers": true, "expand": 2})).unwrap();
+        assert_eq!(px(&s, 10, 2), vec![1.0, 0.0, 0.0, 1.0], "expand reaches 2 px past the edge");
+        assert_eq!(px(&s, 11, 2), vec![1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(px(&s, 12, 2), vec![0.0; 4], "expand stops where it should");
     }
 
     #[test]

@@ -97,7 +97,7 @@ fn magic_eraser(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     let (area, img) = crate::selection_cmds::sample_rgba8(s, sample_all)?;
-    let region = sel::wand_region(&img, area, (x, y), tolerance, contiguous, anti_alias);
+    let region = sel::wand_region(&img, area, (x, y), tolerance, contiguous, anti_alias, 0);
     drop(img);
     let Some(region) = region else { return Ok(damage(s, Rect::EMPTY, false)) };
     let bg = s.tools.background;

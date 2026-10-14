@@ -1416,6 +1416,12 @@
 	Roundness Jitter	원형률 지터
 	Rulers & Grids	눈금자 및 격자
 	Sample All Layers	모든 레이어 샘플링
+	Expand Area	영역 확장
+	Close Gaps	틈새 닫기
+	Sample	샘플
+	Reference Layer	참조 레이어
+	No reference layer chosen — sampling the current layer	참조 레이어가 선택되지 않음 — 현재 레이어에서 샘플링
+	The reference layer is gone — sampling the current layer	참조 레이어를 찾을 수 없음 — 현재 레이어에서 샘플링
 	Sample:	샘플:
 	Sampling: Background Swatch	샘플링: 배경색 견본
 	Sampling: Continuous	샘플링: 연속

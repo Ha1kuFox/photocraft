@@ -147,7 +147,7 @@ pub fn reset_options(o: &mut ToolOptions, tool: Tool) {
         Tool::ColorReplacement => reset!(cr_mode, cr_sampling, cr_limits, cr_tolerance, cr_anti_alias),
         Tool::MagicEraser => reset!(tolerance, anti_alias, contiguous, sample_all_layers, magic_eraser_opacity),
         Tool::Gradient => reset!(gradient_style, gradient_reverse, gradient_dither, gradient_classic, gradient_blend_mode, fill_opacity),
-        Tool::PaintBucket => reset!(bucket_fill_pattern, fill_opacity, tolerance, anti_alias, contiguous, sample_all_layers),
+        Tool::PaintBucket => reset!(bucket_fill_pattern, fill_opacity, tolerance, anti_alias, contiguous, sample_all_layers, bucket_expand, bucket_close_gap, bucket_sample, bucket_sample_layer),
         Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => reset!(type_font, type_style, type_size, type_aa, type_align),
         Tool::Zoom => reset!(zoom_scrubby),
         Tool::SpotHealing => reset!(spot_type, sample_all_layers),

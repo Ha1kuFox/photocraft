@@ -1402,6 +1402,12 @@
 	Roundness Jitter	Yuvarlaklık Değişimi
 	Rulers & Grids	Cetveller ve Izgaralar
 	Sample All Layers	Tüm Katmanları Örnekle
+	Expand Area	Alanı Genişlet
+	Close Gaps	Boşlukları Kapat
+	Sample	Örnek
+	Reference Layer	Referans Katman
+	No reference layer chosen — sampling the current layer	Referans katman seçilmedi — mevcut katman örnekleniyor
+	The reference layer is gone — sampling the current layer	Referans katman kayboldu — mevcut katman örnekleniyor
 	Sample:	Örnek:
 	Sampling: Background Swatch	Örnekleme: Arka Plan Renk Örneği
 	Sampling: Continuous	Örnekleme: Sürekli

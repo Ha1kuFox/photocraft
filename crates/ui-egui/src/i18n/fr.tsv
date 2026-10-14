@@ -1426,6 +1426,12 @@
 	Roundness Jitter	Variation de l'arrondi
 	Rulers & Grids	Règles et grilles
 	Sample All Layers	Échantillonner tous les calques
+	Expand Area	Étendre la zone
+	Close Gaps	Combler les vides
+	Sample	Échantillon
+	Reference Layer	Calque de référence
+	No reference layer chosen — sampling the current layer	Aucun calque de référence choisi — échantillonnage du calque actif
+	The reference layer is gone — sampling the current layer	Le calque de référence a disparu — échantillonnage du calque actif
 	Sample:	Échantillon :
 	Sampling: Background Swatch	Échantillonnage : nuance d'arrière-plan
 	Sampling: Continuous	Échantillonnage : continu

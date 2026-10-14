@@ -828,6 +828,12 @@
 	Anti-Alias	Сглаживание
 	Contiguous	Смежные пикселы
 	Sample All Layers	По всем слоям
+	Expand Area	Расширить область
+	Close Gaps	Закрыть разрывы
+	Sample	Сэмпл
+	Reference Layer	Опорный слой
+	No reference layer chosen — sampling the current layer	Опорный слой не выбран — сэмплирую текущий слой
+	The reference layer is gone — sampling the current layer	Опорный слой пропал — сэмплирую текущий слой
 	Protect Foreground Color	Защитить основной цвет
 	Matte	Маска
 	Matting	Удаление ореола

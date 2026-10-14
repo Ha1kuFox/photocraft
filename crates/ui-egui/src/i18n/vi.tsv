@@ -1293,6 +1293,12 @@
 	Mix	Trộn
 	Flow	Lưu lượng
 	Sample All Layers	Lấy mẫu mọi lớp
+	Expand Area	Mở rộng vùng
+	Close Gaps	Đóng khoảng trống
+	Sample	Mẫu
+	Reference Layer	Lớp tham chiếu
+	No reference layer chosen — sampling the current layer	Chưa chọn lớp tham chiếu — đang lấy mẫu lớp hiện tại
+	The reference layer is gone — sampling the current layer	Lớp tham chiếu đã mất — đang lấy mẫu lớp hiện tại
 
 # Camera Raw labels (required for every registered non-English language)
 	Amount	Mức

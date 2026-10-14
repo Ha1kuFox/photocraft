@@ -1440,6 +1440,12 @@
 	Roundness Jitter	Rozrzut zaokrąglenia
 	Rulers & Grids	Linijki i siatki
 	Sample All Layers	Próbkuj wszystkie warstwy
+	Expand Area	Rozszerz obszar
+	Close Gaps	Zamknij przerwy
+	Sample	Próbka
+	Reference Layer	Warstwa odniesienia
+	No reference layer chosen — sampling the current layer	Nie wybrano warstwy odniesienia — próbkowanie bieżącej warstwy
+	The reference layer is gone — sampling the current layer	Warstwa odniesienia zniknęła — próbkowanie bieżącej warstwy
 	Sample:	Próbka:
 	Sampling: Background Swatch	Próbkowanie: próbka tła
 	Sampling: Continuous	Próbkowanie: ciągłe

@@ -1274,6 +1274,12 @@
 	Roundness:	Kerekség:
 	Rule of Thirds	Harmadolási szabály
 	Sample All Layers	Mintavétel minden rétegből
+	Expand Area	Terület kiterjesztése
+	Close Gaps	Hézagok bezárása
+	Sample	Mintavétel
+	Reference Layer	Referenciaréteg
+	No reference layer chosen — sampling the current layer	Nincs kiválasztott referenciaréteg — az aktuális rétegből mintavételez
+	The reference layer is gone — sampling the current layer	A referenciaréteg eltűnt — az aktuális rétegből mintavételez
 	Sample Size:	Mintaméret:
 	Sample:	Minta:
 	Sampling: Background Swatch	Mintavétel: háttérszín

@@ -121,7 +121,7 @@ fn magic_wand(s: &mut Session, p: &Value) -> Result<Value> {
         Some(plane) => plane,
         None => sample_rgba8(s, b(p, "sampleAllLayers", false))?,
     };
-    let region = sel::wand_region(&img, area, (x, y), f(p, "tolerance", 32.0), b(p, "contiguous", true), b(p, "antiAlias", true));
+    let region = sel::wand_region(&img, area, (x, y), f(p, "tolerance", 32.0), b(p, "contiguous", true), b(p, "antiAlias", true), 0);
     drop(img);
     let m = mode(p);
     let selected = s.edit("Magic Wand", |doc, _| {

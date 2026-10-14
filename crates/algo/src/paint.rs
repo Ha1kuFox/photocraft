@@ -158,7 +158,9 @@ pub fn paint_gradient(
 }
 
 /// Paint bucket: fills the region similar to the seed pixel (on the layer's
-/// own pixels) within `area`, respecting the selection.
+/// own pixels) within `area`, respecting the selection. `close_gap` treats gaps up to that
+/// wide as closed walls (see [`crate::selection::wand_region`); `expand` grows the sampled
+/// boundary by that many px (see [`crate::selection::dilate_region`]).
 #[allow(clippy::too_many_arguments)]
 pub fn bucket_fill(
     s: &mut Surface,
@@ -171,8 +173,10 @@ pub fn bucket_fill(
     opacity: f32,
     selection: Option<&Surface>,
     lock_transparency: bool,
+    close_gap: u32,
+    expand: u32,
 ) -> bool {
-    bucket_fill_src(s, area, seed, tolerance, contiguous, anti_alias, opacity, selection, lock_transparency, |_, _| color)
+    bucket_fill_src(s, area, seed, tolerance, contiguous, anti_alias, opacity, selection, lock_transparency, |_, _| color, close_gap, expand)
 }
 
 /// Like [`bucket_fill`] but the fill colour comes from `src(x, y)` — e.g. a pattern sampled at the
@@ -189,8 +193,10 @@ pub fn bucket_fill_src(
     selection: Option<&Surface>,
     lock_transparency: bool,
     src: impl Fn(i32, i32) -> [f32; 4] + Sync,
+    close_gap: u32,
+    expand: u32,
 ) -> bool {
-    bucket_fill_inks(s, area, seed, tolerance, contiguous, anti_alias, opacity, selection, lock_transparency, src, None)
+    bucket_fill_inks(s, area, seed, tolerance, contiguous, anti_alias, opacity, selection, lock_transparency, src, None, close_gap, expand)
 }
 
 /// [`bucket_fill_src`] where `inks` (CMYK, 0..1) are what a fully covered pixel of a CMYK target
@@ -208,13 +214,16 @@ pub fn bucket_fill_inks(
     lock_transparency: bool,
     src: impl Fn(i32, i32) -> [f32; 4] + Sync,
     inks: Option<[f32; 4]>,
+    close_gap: u32,
+    expand: u32,
 ) -> bool {
     if !area.contains(seed.0, seed.1) {
         return false;
     }
     let img = crate::selection::rgba8_image(s, area);
-    let Some(region) = crate::selection::wand_region(&img, area, seed, tolerance, contiguous, anti_alias) else { return false };
+    let Some(region) = crate::selection::wand_region(&img, area, seed, tolerance, contiguous, anti_alias, close_gap) else { return false };
     drop(img);
+    let region = crate::selection::dilate_region(&region, expand);
     bucket_fill_region_inks(s, &region, opacity, selection, lock_transparency, src, inks);
     true
 }
@@ -302,10 +311,10 @@ mod tests {
         let a = Rect::new(0, 0, 10, 10);
         s.fill_rect(a, &[1.0, 1.0, 1.0, 1.0]);
         s.fill_rect(Rect::new(5, 0, 6, 10), &[0.0, 0.0, 0.0, 1.0]);
-        assert!(bucket_fill(&mut s, a, (1, 1), 10.0, true, false, [1.0, 0.0, 0.0, 1.0], 1.0, None, false));
+        assert!(bucket_fill(&mut s, a, (1, 1), 10.0, true, false, [1.0, 0.0, 0.0, 1.0], 1.0, None, false, 0, 0));
         assert_eq!(s.pixel(2, 2), vec![1.0, 0.0, 0.0, 1.0]);
         assert_eq!(s.pixel(8, 2), vec![1.0, 1.0, 1.0, 1.0]);
-        assert!(!bucket_fill(&mut s, a, (50, 1), 10.0, true, false, [1.0, 0.0, 0.0, 1.0], 1.0, None, false));
+        assert!(!bucket_fill(&mut s, a, (50, 1), 10.0, true, false, [1.0, 0.0, 0.0, 1.0], 1.0, None, false, 0, 0));
     }
 
     #[test]

@@ -3,6 +3,7 @@
 
 use egui::{Modifiers, PointerButton, Pos2};
 use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::NodeT;
 use photocraft_doc::LayerId;
 use photocraft_geom::Rect;
 use photocraft_ui_egui::PhotocraftApp;
@@ -53,6 +54,7 @@ fn setup(h: &mut Harness) -> LayerId {
         o.anti_alias = false;
         o.contiguous = true;
         o.sample_all_layers = false;
+        o.bucket_sample = "active".into();
         o.bucket_fill_pattern = false;
         o.fill_opacity = 100.0;
         background
@@ -95,10 +97,19 @@ fn all_layers_checkbox_limits_bucket_fill_to_the_visible_color() {
         let background = setup(&mut h);
         let before = pixels(&h, background);
         if all_layers {
-            h.get_by_label("All Layers").click();
+            h.get_all_by_role(egui::accesskit::Role::ComboBox)
+                .find(|c| c.accesskit_node().value().as_deref() == Some("Current Layer"))
+                .expect("the Sample dropdown")
+                .click();
+            h.run_steps(3);
+            h.key_press(egui::Key::ArrowDown);
             h.run_steps(3);
         }
-        assert_eq!(h.state().ui.tool_options.sample_all_layers, all_layers, "checkbox changed the option");
+        assert_eq!(
+            h.state().ui.tool_options.bucket_sample,
+            if all_layers { "all" } else { "active" },
+            "dropdown changed the sampling"
+        );
 
         let pos = screen(&h, 300.0, 150.0);
         h.event(egui::Event::PointerMoved(pos));
