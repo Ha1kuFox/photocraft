@@ -456,3 +456,77 @@ fn bucket_after_clearing_a_hard_selection_leaves_no_ring() {
         }
     }
 }
+
+/// The sample source can be a named reference layer rather than the composite, and bad shapes
+/// or missing ids are errors, never panics.
+#[test]
+fn bucket_sample_layer_reads_the_named_layer() {
+    let (mut s, bottom) = bucket_layers(8);
+    // The wall lives on `bottom`; the active layer is empty.
+    s.execute("paint.bucket", json!({"x": 2, "y": 2, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sample": {"layer": bottom.0}})).unwrap();
+    assert_eq!(px(&s, 5, 5), vec![1.0, 0.0, 0.0, 1.0]);
+    assert_eq!(px(&s, 15, 5), vec![0.0; 4], "the named wall bounds the fill");
+    assert_eq!(px(&s, 10, 5), vec![0.0; 4], "wall itself is untouched");
+    // `"all"` matches the legacy flag.
+    assert!(s.undo());
+    s.execute("paint.bucket", json!({"x": 2, "y": 2, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sample": "all"})).unwrap();
+    assert_eq!(px(&s, 15, 5), vec![0.0; 4]);
+    // Unknown shapes and ids are errors, never panics.
+    for bad in [json!("bogus"), json!({"layer": "x"}), json!({"layer": 99999}), json!({})] {
+        assert!(s.execute("paint.bucket", json!({"x": 2, "y": 2, "sample": bad})).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn bucket_sample_layer_needs_pixels() {
+    let (mut s, _) = bucket_layers(8);
+    let group = s.execute("layer.new.group", json!({})).unwrap()["layer"].as_u64().unwrap();
+    assert!(s.execute("paint.bucket", json!({"x": 2, "y": 2, "sample": {"layer": group}})).is_err(), "a group has no pixels to sample");
+}
+
+/// A wall with a 2 px hole, on the bottom layer, with an empty active layer above.
+fn bucket_gap_layers() -> Session {
+    let mut s = crate::session();
+    s.execute("file.new", json!({"width": 20, "height": 10, "background": "white"})).unwrap();
+    s.edit("wall with a hole", |doc, _| {
+        let surf = doc.layers[0].surface_mut().unwrap();
+        surf.fill_rect(Rect::new(10, 0, 11, 4), &[0.0, 0.0, 0.0, 1.0]);
+        surf.fill_rect(Rect::new(10, 6, 11, 10), &[0.0, 0.0, 0.0, 1.0]);
+        Ok(())
+    })
+    .unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s
+}
+
+#[test]
+fn bucket_close_gap_plugs_holes_up_to_its_width() {
+    let fill = |s: &mut Session, p: Value| s.execute("paint.bucket", p).unwrap()["filled"].as_bool().unwrap();
+    // Open hole: the fill leaks through to the far side.
+    let mut s = bucket_gap_layers();
+    assert!(fill(&mut s, json!({"x": 2, "y": 5, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sampleAllLayers": true})));
+    assert_eq!(px(&s, 15, 5), vec![1.0, 0.0, 0.0, 1.0], "a 2 px hole leaks without closeGap");
+    // The same hole counts as closed with closeGap = 2.
+    let mut s = bucket_gap_layers();
+    assert!(fill(&mut s, json!({"x": 2, "y": 5, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sampleAllLayers": true, "closeGap": 2})));
+    assert_eq!(px(&s, 5, 5), vec![1.0, 0.0, 0.0, 1.0], "the near side still fills");
+    assert_eq!(px(&s, 15, 5), vec![0.0; 4], "the far side stays empty");
+    // Out-of-range numbers clamp (the codebase convention); wrong types are errors.
+    let mut s = bucket_gap_layers();
+    s.execute("paint.bucket", json!({"x": 2, "y": 5, "closeGap": 101, "expand": -1, "sampleAllLayers": true})).unwrap();
+    assert!(s.execute("paint.bucket", json!({"x": 2, "y": 5, "closeGap": "a lot"})).is_err());
+    assert!(s.execute("paint.bucket", json!({"x": 2, "y": 5, "expand": [2]})).is_err());
+}
+
+#[test]
+fn bucket_expand_grows_past_the_sampled_edge() {
+    // A solid wall (no hole): the left side is bounded at x = 10 either way.
+    let mut s = bucket_layers(8).0;
+    s.execute("paint.bucket", json!({"x": 2, "y": 2, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sampleAllLayers": true})).unwrap();
+    assert_eq!(px(&s, 10, 2), vec![0.0; 4], "the solid wall stops the fill");
+    let mut s = bucket_layers(8).0;
+    s.execute("paint.bucket", json!({"x": 2, "y": 2, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sampleAllLayers": true, "expand": 2})).unwrap();
+    assert_eq!(px(&s, 10, 2), vec![1.0, 0.0, 0.0, 1.0], "expand reaches 2 px past the edge");
+    assert_eq!(px(&s, 11, 2), vec![1.0, 0.0, 0.0, 1.0]);
+    assert_eq!(px(&s, 12, 2), vec![0.0; 4], "expand stops where it should");
+}

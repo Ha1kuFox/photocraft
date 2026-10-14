@@ -327,6 +327,22 @@ pub fn wand_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), tolerance: f32
     wand_region_within(img, area, seed, tolerance, contiguous, anti_alias, None)
 }
 
+/// [`wand_region`] with `close_gap` (px): contiguous fills treat gaps up to that wide as closed
+/// walls, by eroding the similar pixels by `ceil(close_gap / 2)` before the span fill. The seed
+/// always stays open. Non-contiguous matches ignore it.
+#[allow(clippy::too_many_arguments)]
+pub fn wand_region_close_gap(
+    img: &[[u8; 4]],
+    area: Rect,
+    seed: (i32, i32),
+    tolerance: f32,
+    contiguous: bool,
+    anti_alias: bool,
+    close_gap: u32,
+) -> Option<Region> {
+    region_by_rule(img, area, seed, tolerance, contiguous, anti_alias, None, ColorDistance::LargestChannel, MatchRule::Wand, close_gap)
+}
+
 /// [`wand_region`] whose contiguous fill only passes through pixels at least half selected in
 /// `within` (the current selection's coverage over `area`, row-major): Subtract and Intersect
 /// grow the region from the seed through the selection only (#11779). A seed outside it finds
@@ -355,7 +371,7 @@ pub fn wand_region_by(
     within: Option<&[f32]>,
     distance: ColorDistance,
 ) -> Option<Region> {
-    region_by_rule(img, area, seed, tolerance, contiguous, anti_alias, within, distance, MatchRule::Wand)
+    region_by_rule(img, area, seed, tolerance, contiguous, anti_alias, within, distance, MatchRule::Wand, 0)
 }
 
 /// Which pixels count as "similar" to the clicked one.
@@ -385,7 +401,21 @@ enum MatchRule {
 /// Only that one semi-transparent case was measured; unmeasured cases keep the previous
 /// behaviour. [`wand_region`] and [`wand_region_within`] are unchanged.
 pub(crate) fn wand_region_bucket(img: &[[u8; 4]], area: Rect, seed: (i32, i32), tolerance: f32, contiguous: bool, anti_alias: bool) -> Option<Region> {
-    region_by_rule(img, area, seed, tolerance, contiguous, anti_alias, None, ColorDistance::LargestChannel, MatchRule::Bucket)
+    region_by_rule(img, area, seed, tolerance, contiguous, anti_alias, None, ColorDistance::LargestChannel, MatchRule::Bucket, 0)
+}
+
+/// [`wand_region_bucket`] with `close_gap` (see [`wand_region_close_gap`]).
+#[allow(clippy::too_many_arguments)]
+pub fn wand_region_bucket_close_gap(
+    img: &[[u8; 4]],
+    area: Rect,
+    seed: (i32, i32),
+    tolerance: f32,
+    contiguous: bool,
+    anti_alias: bool,
+    close_gap: u32,
+) -> Option<Region> {
+    region_by_rule(img, area, seed, tolerance, contiguous, anti_alias, None, ColorDistance::LargestChannel, MatchRule::Bucket, close_gap)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -399,6 +429,7 @@ fn region_by_rule(
     within: Option<&[f32]>,
     distance: ColorDistance,
     rule: MatchRule,
+    close_gap: u32,
 ) -> Option<Region> {
     if !area.contains(seed.0, seed.1) {
         return None;
@@ -426,9 +457,8 @@ fn region_by_rule(
     };
     let mut marks = vec![0u8; w * h];
     let (mut bx0, mut by0, mut bx1, mut by1) = (usize::MAX, usize::MAX, 0usize, 0usize);
-    // Wall dilation for close_gap (contiguous only): erode the similar-set by the radius, so
-    // the span fill below sees the gaps as walls. Pixels outside the image count as open, so
-    // the fill is never inset from the canvas edge.
+    // Wall erosion for close_gap (contiguous only): erode the similar-set by the radius, so
+    // the span fill below sees the gaps as walls. The seed always stays open.
     let radius = close_gap.div_ceil(2).min(4096) as usize;
     let open: Option<Vec<bool>> = (contiguous && radius > 0).then(|| {
         let sim: Vec<bool> = img.iter().map(|p| similar(*p)).collect();
@@ -449,10 +479,10 @@ fn region_by_rule(
                 continue;
             }
             let (mut l, mut r) = (x, x);
-            while l > 0 && marks[row + l - 1] == 0 && similar(img[row + l - 1]) && inside(row + l - 1) {
+            while l > 0 && marks[row + l - 1] == 0 && passable(l - 1, y) && inside(row + l - 1) {
                 l -= 1;
             }
-            while r + 1 < w && marks[row + r + 1] == 0 && similar(img[row + r + 1]) && inside(row + r + 1) {
+            while r + 1 < w && marks[row + r + 1] == 0 && passable(r + 1, y) && inside(row + r + 1) {
                 r += 1;
             }
             marks[row + l..=row + r].fill(255);
@@ -464,7 +494,7 @@ fn region_by_rule(
                 let nrow = ny * w;
                 let mut in_run = false;
                 for nx in l..=r {
-                    let ok = marks[nrow + nx] == 0 && similar(img[nrow + nx]) && inside(nrow + nx);
+                    let ok = marks[nrow + nx] == 0 && passable(nx, ny) && inside(nrow + nx);
                     if ok && !in_run {
                         stack.push((nx, ny));
                     }
@@ -531,110 +561,6 @@ fn region_by_rule(
     Some(Region { bbox, mask })
 }
 
-/// Box erosion of a bool mask by `r` px (Chebyshev): a pixel stays set only when every pixel
-/// of its `(2r+1)²` neighbourhood is set. Pixels outside the image count as set, so the mask
-/// is never inset from the image edge. Separable sliding windows: linear in the pixel count.
-fn erode_box(w: usize, h: usize, src: &[bool], r: usize) -> Vec<bool> {
-    if r == 0 || w == 0 || h == 0 {
-        return src.to_vec();
-    }
-    // Sliding AND over [x-r, x+r], clamped to the row (outside counts as set).
-    let mut tmp = vec![true; w * h];
-    for y in 0..h {
-        let mut falses = 0usize;
-        for i in 0..=r.min(w - 1) {
-            if !src[y * w + i] {
-                falses += 1;
-            }
-        }
-        tmp[y * w] = falses == 0;
-        for x in 1..w {
-            if x + r < w && !src[y * w + x + r] {
-                falses += 1;
-            }
-            if x > r && !src[y * w + x - r - 1] {
-                falses = falses.saturating_sub(1);
-            }
-            tmp[y * w + x] = falses == 0;
-        }
-    }
-    let mut out = vec![true; w * h];
-    for x in 0..w {
-        let mut falses = 0usize;
-        for i in 0..=r.min(h - 1) {
-            if !tmp[i * w + x] {
-                falses += 1;
-            }
-        }
-        out[x] = falses == 0;
-        for y in 1..h {
-            if y + r < h && !tmp[(y + r) * w + x] {
-                falses += 1;
-            }
-            if y > r && !tmp[(y - r - 1) * w + x] {
-                falses = falses.saturating_sub(1);
-            }
-            out[y * w + x] = falses == 0;
-        }
-    }
-    out
-}
-
-/// Centred sliding maximum of one line, zero-extended past its ends.
-fn max_filter_line(src: &[u8], r: usize) -> Vec<u8> {
-    use std::collections::VecDeque;
-    let n = src.len();
-    if n == 0 || r == 0 {
-        return src.to_vec();
-    }
-    let mut pad = Vec::with_capacity(n + 2 * r);
-    pad.resize(r, 0);
-    pad.extend_from_slice(src);
-    pad.resize(n + 2 * r, 0);
-    let mut out = vec![0u8; n];
-    let mut dq: VecDeque<usize> = VecDeque::new();
-    for (i, &v) in pad.iter().enumerate() {
-        while dq.back().is_some_and(|&b| pad[b] <= v) {
-            dq.pop_back();
-        }
-        dq.push_back(i);
-        if dq.front().is_some_and(|&f| f + 2 * r < i) {
-            dq.pop_front();
-        }
-        if i >= 2 * r {
-            out[i - 2 * r] = pad[*dq.front().unwrap_or(&i)];
-        }
-    }
-    out
-}
-
-/// Grow a region's coverage by `r` px (Chebyshev max-filter): Paint Bucket "Expand". The box
-/// grows by `r` on every side (clipping to the surface happens at paint time); anti-aliased
-/// fringes dilate outward rather than turning solid. `r == 0` returns the region unchanged.
-pub fn dilate_region(region: &Region, r: u32) -> Region {
-    let r = r as usize;
-    if r == 0 || region.bbox.is_empty() {
-        return region.clone();
-    }
-    let (bw, bh) = (region.bbox.width() as usize, region.bbox.height() as usize);
-    let (nw, nh) = (bw + 2 * r, bh + 2 * r);
-    let mut pad = vec![0u8; nw * nh];
-    for y in 0..bh {
-        pad[(y + r) * nw + r..(y + r) * nw + r + bw].copy_from_slice(&region.mask[y * bw..(y + 1) * bw]);
-    }
-    let mut tmp = vec![0u8; nw * nh];
-    for y in 0..nh {
-        tmp[y * nw..(y + 1) * nw].copy_from_slice(&max_filter_line(&pad[y * nw..(y + 1) * nw], r));
-    }
-    let mut out = vec![0u8; nw * nh];
-    for x in 0..nw {
-        let col: Vec<u8> = (0..nh).map(|y| tmp[y * nw + x]).collect();
-        for (y, v) in max_filter_line(&col, r).into_iter().enumerate() {
-            out[y * nw + x] = v;
-        }
-    }
-    Region { bbox: Rect::new(region.bbox.x0 - r as i32, region.bbox.y0 - r as i32, region.bbox.x1 + r as i32, region.bbox.y1 + r as i32), mask: out }
-}
 /// Combines a [`Region`] with the current selection, touching only the region's box (outside it
 /// the new mask is zero). Returns `None` when nothing remains selected.
 pub fn combine_region(old: Option<&Surface>, new: Option<&Region>, mode: SelectionMode) -> Option<Surface> {
@@ -997,6 +923,111 @@ pub fn tone_range(px: &[[f32; 4]], lo: f32, hi: f32, falloff: f32) -> Vec<f32> {
         .collect()
 }
 
+/// Box erosion of a bool mask by `r` px (Chebyshev): a pixel stays set only when every pixel
+/// of its `(2r+1)²` neighbourhood is set. Pixels outside the image count as set, so the mask
+/// is never inset from the image edge. Separable sliding windows: linear in the pixel count.
+fn erode_box(w: usize, h: usize, src: &[bool], r: usize) -> Vec<bool> {
+    if r == 0 || w == 0 || h == 0 {
+        return src.to_vec();
+    }
+    // Sliding AND over [x-r, x+r], clamped to the row (outside counts as set).
+    let mut tmp = vec![true; w * h];
+    for y in 0..h {
+        let mut falses = 0usize;
+        for i in 0..=r.min(w - 1) {
+            if !src[y * w + i] {
+                falses += 1;
+            }
+        }
+        tmp[y * w] = falses == 0;
+        for x in 1..w {
+            if x + r < w && !src[y * w + x + r] {
+                falses += 1;
+            }
+            if x > r && !src[y * w + x - r - 1] {
+                falses = falses.saturating_sub(1);
+            }
+            tmp[y * w + x] = falses == 0;
+        }
+    }
+    let mut out = vec![true; w * h];
+    for x in 0..w {
+        let mut falses = 0usize;
+        for i in 0..=r.min(h - 1) {
+            if !tmp[i * w + x] {
+                falses += 1;
+            }
+        }
+        out[x] = falses == 0;
+        for y in 1..h {
+            if y + r < h && !tmp[(y + r) * w + x] {
+                falses += 1;
+            }
+            if y > r && !tmp[(y - r - 1) * w + x] {
+                falses = falses.saturating_sub(1);
+            }
+            out[y * w + x] = falses == 0;
+        }
+    }
+    out
+}
+
+/// Centred sliding maximum of one line, zero-extended past its ends.
+fn max_filter_line(src: &[u8], r: usize) -> Vec<u8> {
+    use std::collections::VecDeque;
+    let n = src.len();
+    if n == 0 || r == 0 {
+        return src.to_vec();
+    }
+    let mut pad = Vec::with_capacity(n + 2 * r);
+    pad.resize(r, 0);
+    pad.extend_from_slice(src);
+    pad.resize(n + 2 * r, 0);
+    let mut out = vec![0u8; n];
+    let mut dq: VecDeque<usize> = VecDeque::new();
+    for (i, &v) in pad.iter().enumerate() {
+        while dq.back().is_some_and(|&b| pad[b] <= v) {
+            dq.pop_back();
+        }
+        dq.push_back(i);
+        if dq.front().is_some_and(|&f| f + 2 * r < i) {
+            dq.pop_front();
+        }
+        if i >= 2 * r {
+            out[i - 2 * r] = pad[*dq.front().unwrap_or(&i)];
+        }
+    }
+    out
+}
+
+/// Grow a region's coverage by `r` px (Chebyshev max-filter): Paint Bucket "Expand". The box
+/// grows by `r` on every side (clipping to the surface happens at paint time); anti-aliased
+/// fringes dilate outward rather than turning solid. `r == 0` returns the region unchanged.
+pub fn dilate_region(region: &Region, r: u32) -> Region {
+    let r = r as usize;
+    if r == 0 || region.bbox.is_empty() {
+        return region.clone();
+    }
+    let (bw, bh) = (region.bbox.width() as usize, region.bbox.height() as usize);
+    let (nw, nh) = (bw + 2 * r, bh + 2 * r);
+    let mut pad = vec![0u8; nw * nh];
+    for y in 0..bh {
+        pad[(y + r) * nw + r..(y + r) * nw + r + bw].copy_from_slice(&region.mask[y * bw..(y + 1) * bw]);
+    }
+    let mut tmp = vec![0u8; nw * nh];
+    for y in 0..nh {
+        tmp[y * nw..(y + 1) * nw].copy_from_slice(&max_filter_line(&pad[y * nw..(y + 1) * nw], r));
+    }
+    let mut out = vec![0u8; nw * nh];
+    for x in 0..nw {
+        let col: Vec<u8> = (0..nh).map(|y| tmp[y * nw + x]).collect();
+        for (y, v) in max_filter_line(&col, r).into_iter().enumerate() {
+            out[y * nw + x] = v;
+        }
+    }
+    Region { bbox: Rect::new(region.bbox.x0 - r as i32, region.bbox.y0 - r as i32, region.bbox.x1 + r as i32, region.bbox.y1 + r as i32), mask: out }
+}
+
 mod distance;
 #[cfg(test)]
 mod ellipse_aa_edge_tests;
@@ -1259,102 +1290,6 @@ impl ColorBvh {
 
     fn matches(&self, q: &[f32; 4], tol: f32) -> bool {
         self.nodes.len().checked_sub(1).is_some_and(|root| self.matches_node(root, q, tol))
-    }
-
-    /// A black ring with a `gap`×`gap` notch cut out of its top, on white: helper for the
-    /// close-gap tests.
-    fn broken_ring(size: i32, gap: i32) -> (Rect, Vec<[u8; 4]>) {
-        let area = Rect::new(0, 0, size, size);
-        let (w, b) = ([255, 255, 255, 255], [0, 0, 0, 255]);
-        let mut img = vec![w; (size * size) as usize];
-        let c = size / 2;
-        let r0 = size / 2 - 2;
-        for y in 0..size {
-            for x in 0..size {
-                let d = ((x - c) * (x - c) + (y - c) * (y - c)) as f64;
-                // A 1 px ring; the notch removes a `gap`-wide square of it at the top.
-                if (d - (r0 * r0) as f64).abs() < r0 as f64 && !(y - (c - r0) < gap && (x - c).abs() * 2 < gap) {
-                    img[(y * size + x) as usize] = b;
-                }
-            }
-        }
-        (area, img)
-    }
-
-    #[test]
-    fn close_gap_plugs_small_gaps_that_otherwise_leak() {
-        let (area, img) = broken_ring(40, 2);
-        let seed = (20, 20);
-        // Without close_gap the 2 px gap leaks: the fill reaches outside the ring.
-        let open = wand_region(&img, area, seed, 10.0, true, false, 0).unwrap();
-        assert!(open.at(20, 2) > 0.5, "leaked through the gap without close_gap");
-        // A 2 px gap closes with close_gap = 2 (radius 1 covers 2 px).
-        let closed = wand_region(&img, area, seed, 10.0, true, false, 2).unwrap();
-        assert!(closed.at(20, 2) == 0.0, "gap of 2 stays shut with close_gap = 2");
-        assert!(closed.at(20, 20) > 0.5, "the seed area still fills");
-        // A wider gap stays open: radius 1 only covers 2 px, so the fill slips through
-        // the middle of the gap column and out of the ring.
-        let (area4, img4) = broken_ring(40, 6);
-        let wide = wand_region(&img4, area4, seed, 10.0, true, false, 2).unwrap();
-        assert!(wide.at(20, 0) > 0.5, "a 6 px gap leaks with close_gap = 2");
-        let wide_shut = wand_region(&img4, area4, seed, 10.0, true, false, 6).unwrap();
-        assert!(wide_shut.at(20, 0) == 0.0, "a 6 px gap shuts with close_gap = 6");
-    }
-
-    #[test]
-    fn close_gap_keeps_a_seed_next_to_a_line() {
-        // Clicking 1 px away from a wall with close_gap on must still fill (the seed is
-        // admitted even though erosion removes it).
-        let area = Rect::new(0, 0, 10, 10);
-        let (w, b) = ([255, 255, 255, 255], [0, 0, 0, 255]);
-        let mut img = vec![w; 100];
-        for y in 0..10 {
-            img[(y * 10 + 5) as usize] = b;
-        }
-        let r = wand_region(&img, area, (4, 5), 10.0, true, false, 4).unwrap();
-        assert!(r.at(4, 5) > 0.5);
-        assert!(r.at(6, 5) == 0.0, "the wall still blocks");
-    }
-
-    #[test]
-    fn erode_box_matches_the_naive_neighbourhood() {
-        // Cross-check the sliding windows against the brute-force definition on a fixed
-        // pseudo-random mask, several radii included.
-        let (w, h) = (37, 29);
-        let mut src = vec![true; w * h];
-        let mut s = 0x12345678u32;
-        for v in src.iter_mut() {
-            s = s.wrapping_mul(1664525).wrapping_add(1013904223);
-            *v = s % 100 < 70;
-        }
-        for r in [0, 1, 2, 3, 5, 13, 40] {
-            let fast = erode_box(w, h, &src, r);
-            for y in 0..h {
-                for x in 0..w {
-                    let mut ok = true;
-                    for dy in -(r as i32)..=r as i32 {
-                        for dx in -(r as i32)..=r as i32 {
-                            let (nx, ny) = (x as i32 + dx, y as i32 + dy);
-                            if nx >= 0 && ny >= 0 && nx < w as i32 && ny < h as i32 && !src[ny as usize * w + nx as usize] {
-                                ok = false;
-                            }
-                        }
-                    }
-                    assert_eq!(fast[y * w + x], ok, "r={r} at {x},{y}");
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn dilate_region_grows_the_box_and_keeps_coverage() {
-        let region = Region { bbox: Rect::new(10, 10, 14, 14), mask: vec![255u8; 16] };
-        let grown = dilate_region(&region, 2);
-        assert_eq!(grown.bbox, Rect::new(8, 8, 16, 16));
-        assert!(grown.at(8, 8) > 0.0);
-        assert_eq!(grown.at(10, 10), 1.0);
-        assert_eq!(grown.at(7, 7), 0.0);
-        assert_eq!(dilate_region(&region, 0), region);
     }
 }
 

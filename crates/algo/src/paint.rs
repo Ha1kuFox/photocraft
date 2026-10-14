@@ -187,9 +187,7 @@ pub fn paint_gradient(
 }
 
 /// Paint bucket: fills the region similar to the seed pixel (on the layer's
-/// own pixels) within `area`, respecting the selection. `close_gap` treats gaps up to that
-/// wide as closed walls (see [`crate::selection::wand_region`); `expand` grows the sampled
-/// boundary by that many px (see [`crate::selection::dilate_region`]).
+/// own pixels) within `area`, respecting the selection.
 #[allow(clippy::too_many_arguments)]
 pub fn bucket_fill(
     s: &mut Surface,
@@ -225,7 +223,7 @@ pub fn bucket_fill_src(
     close_gap: u32,
     expand: u32,
 ) -> bool {
-    bucket_fill_inks(s, area, seed, tolerance, contiguous, anti_alias, opacity, selection, lock_transparency, src, None, FillMode::Blend(BlendMode::Normal))
+    bucket_fill_inks(s, area, seed, tolerance, contiguous, anti_alias, opacity, selection, lock_transparency, src, None, FillMode::Blend(BlendMode::Normal), close_gap, expand)
 }
 
 /// [`bucket_fill_src`] where `inks` (CMYK, 0..1) are what a fully covered pixel of a CMYK target
@@ -245,12 +243,17 @@ pub fn bucket_fill_inks(
     src: impl Fn(i32, i32) -> [f32; 4] + Sync,
     inks: Option<[f32; 4]>,
     mode: FillMode,
+    close_gap: u32,
+    expand: u32,
 ) -> bool {
     if !area.contains(seed.0, seed.1) {
         return false;
     }
     let img = crate::selection::rgba8_image(s, area);
-    let Some(region) = crate::selection::wand_region_bucket(&img, area, seed, tolerance, contiguous, anti_alias) else { return false };
+    let Some(region) = crate::selection::wand_region_bucket_close_gap(&img, area, seed, tolerance, contiguous, anti_alias, close_gap) else {
+        return false;
+    };
+    let region = crate::selection::dilate_region(&region, expand);
     // Clicked on transparency with Anti-alias on: the wand's fringe gives the partly transparent
     // pixels around the flood no coverage (their alpha is measured against the seed's 0), but the
     // reference application fills each pixel 8-adjacent to the flood at coverage `1 − α`, so the
@@ -444,10 +447,10 @@ mod tests {
                 // The same region filled without the rule: what the bucket used to do.
                 let mut before = s.clone();
                 let img = crate::selection::rgba8_image(&before, a);
-                let region = crate::selection::wand_region(&img, a, (1, 0), 0.0, true, true).unwrap();
+                let region = crate::selection::wand_region_close_gap(&img, a, (1, 0), 0.0, true, true, 0).unwrap();
                 bucket_fill_region_inks(&mut before, &region, opacity, None, false, white, None, FillMode::Blend(BlendMode::Normal));
 
-                assert!(bucket_fill_inks(&mut s, a, (1, 0), 0.0, true, true, opacity, None, false, white, None, FillMode::Blend(BlendMode::Normal)));
+                assert!(bucket_fill_inks(&mut s, a, (1, 0), 0.0, true, true, opacity, None, false, white, None, FillMode::Blend(BlendMode::Normal), 0, 0));
                 for x in 0..4 {
                     let p = s.rgba(x, 0);
                     assert!(p[..3].iter().all(|c| (c - 1.0).abs() < 1e-3) && (p[3] - opacity).abs() < 3e-3, "{fmt:?} {opaque:?} at {x}: {p:?}");
@@ -476,7 +479,7 @@ mod tests {
         // Transparent run against opaque white: x=3 is the anti-aliased edge (coverage < 1).
         let mut s = Surface::new(PixelFormat::CMYKA8);
         s.fill_rect(Rect::new(4, 0, 8, 1), &[0.0, 0.0, 0.0, 0.0, 1.0]);
-        assert!(bucket_fill_inks(&mut s, a, (1, 0), 0.0, true, true, 1.0, None, false, src, Some(inks), FillMode::Blend(BlendMode::Normal)));
+        assert!(bucket_fill_inks(&mut s, a, (1, 0), 0.0, true, true, 1.0, None, false, src, Some(inks), FillMode::Blend(BlendMode::Normal), 0, 0));
         assert!(is_inks(&raw(&s, 1)), "fully covered: {:?}", raw(&s, 1));
         assert!(is_inks(&raw(&s, 3)), "the made-opaque edge takes the picked inks: {:?}", raw(&s, 3));
 
@@ -485,7 +488,7 @@ mod tests {
         let mut s = Surface::new(PixelFormat::CMYKA8);
         s.fill_rect(Rect::new(3, 0, 4, 1), &[0.0, 0.0, 0.0, 0.0, 0.5]);
         s.fill_rect(Rect::new(4, 0, 8, 1), &[0.0, 0.0, 0.0, 0.0, 1.0]);
-        assert!(bucket_fill_inks(&mut s, a, (1, 0), 0.0, true, true, 1.0, None, false, src, Some(inks), FillMode::Blend(BlendMode::Normal)));
+        assert!(bucket_fill_inks(&mut s, a, (1, 0), 0.0, true, true, 1.0, None, false, src, Some(inks), FillMode::Blend(BlendMode::Normal), 0, 0));
         let edge = s.rgba(3, 0);
         assert!(edge[3] > 0.5, "the fill raised the partial pixel's alpha: {edge:?}");
         assert!(!is_inks(&raw(&s, 3)), "a blended destination keeps its own encoding: {:?}", raw(&s, 3));
@@ -509,7 +512,7 @@ mod tests {
                 s.fill_rect(Rect::new(4, 0, 5, 1), &[1.0, 1.0, 1.0, rim as f32 / 255.0]);
                 s.fill_rect(Rect::new(5, 0, 8, 1), &[1.0, 1.0, 1.0, 1.0]);
                 let before = s.clone();
-                assert!(bucket_fill_inks(&mut s, a, (1, 0), 32.0, true, true, 1.0, None, false, white, None, FillMode::Blend(BlendMode::Normal)));
+                assert!(bucket_fill_inks(&mut s, a, (1, 0), 32.0, true, true, 1.0, None, false, white, None, FillMode::Blend(BlendMode::Normal), 0, 0));
                 let p = s.rgba(4, 0);
                 assert_eq!(level(p[3]), ours, "{fmt:?}: rim {rim} -> {p:?}");
                 assert!((ours - reference).abs() <= 1, "rim {rim}: ours {ours}, reference {reference}");
@@ -534,9 +537,9 @@ mod tests {
         s.fill_rect(Rect::new(4, 0, 8, 1), &[1.0, 1.0, 1.0, 1.0]);
         let mut plain = s.clone();
         let img = crate::selection::rgba8_image(&plain, a);
-        let region = crate::selection::wand_region(&img, a, (6, 0), 0.0, true, true).unwrap();
+        let region = crate::selection::wand_region_close_gap(&img, a, (6, 0), 0.0, true, true, 0).unwrap();
         bucket_fill_region_inks(&mut plain, &region, 1.0, None, false, |_, _| [1.0; 4], None, FillMode::Blend(BlendMode::Normal));
-        assert!(bucket_fill_inks(&mut s, a, (6, 0), 0.0, true, true, 1.0, None, false, |_, _| [1.0; 4], None, FillMode::Blend(BlendMode::Normal)));
+        assert!(bucket_fill_inks(&mut s, a, (6, 0), 0.0, true, true, 1.0, None, false, |_, _| [1.0; 4], None, FillMode::Blend(BlendMode::Normal), 0, 0));
         for x in 0..8 {
             assert_eq!(s.rgba(x, 0), plain.rgba(x, 0), "at {x}");
         }
@@ -560,7 +563,7 @@ mod tests {
                     s.fill_rect(Rect::new(4, 0, 5, 1), &[0.0, 0.0, 0.0, alpha as f32 / 255.0]);
                     s.fill_rect(Rect::new(5, 0, 8, 1), &[0.0, 0.0, 0.0, 1.0]);
                     let before = s.clone();
-                    assert!(bucket_fill_inks(&mut s, a, (1, 0), 32.0, true, anti_alias, 1.0, None, false, green, None, FillMode::Blend(BlendMode::Normal)));
+                    assert!(bucket_fill_inks(&mut s, a, (1, 0), 32.0, true, anti_alias, 1.0, None, false, green, None, FillMode::Blend(BlendMode::Normal), 0, 0));
                     let got = s.rgba(4, 0).map(level);
                     if anti_alias {
                         assert!(got.iter().zip(reference).all(|(g, r)| (g - r).abs() <= 2), "{fmt:?} alpha {alpha}: {got:?}, reference {reference:?}");
@@ -585,7 +588,7 @@ mod tests {
         s.fill_rect(a, &[1.0, 1.0, 1.0, 100.0 / 255.0]);
         s.fill_rect(Rect::new(3, 3, 4, 4), &[0.0; 4]);
         let before = s.clone();
-        assert!(bucket_fill_inks(&mut s, a, (3, 3), 32.0, true, true, 1.0, None, false, |_, _| [1.0; 4], None, FillMode::Blend(BlendMode::Normal)));
+        assert!(bucket_fill_inks(&mut s, a, (3, 3), 32.0, true, true, 1.0, None, false, |_, _| [1.0; 4], None, FillMode::Blend(BlendMode::Normal), 0, 0));
         for y in 0..7 {
             for x in 0..7 {
                 let (p, was) = (s.rgba(x, y), before.rgba(x, y));
@@ -607,13 +610,13 @@ mod tests {
             let mut s = Surface::new(fmt);
             s.fill_rect(a, &grey);
             let red = |_, _| [1.0, 0.0, 0.0, 1.0];
-            assert!(bucket_fill_inks(&mut s, a, (0, 0), 0.0, true, false, 1.0, None, false, red, None, FillMode::Blend(BlendMode::Multiply)));
+            assert!(bucket_fill_inks(&mut s, a, (0, 0), 0.0, true, false, 1.0, None, false, red, None, FillMode::Blend(BlendMode::Multiply), 0, 0));
             let px = s.rgba(1, 0);
             assert!((px[0] - 0.5).abs() < 0.01 && px[1] < 0.01 && (px[3] - 1.0).abs() < 1e-3, "{fmt:?} multiply: {px:?}");
-            assert!(bucket_fill_inks(&mut s, a, (0, 0), 0.0, true, false, 0.5, None, false, red, None, FillMode::Clear));
+            assert!(bucket_fill_inks(&mut s, a, (0, 0), 0.0, true, false, 0.5, None, false, red, None, FillMode::Clear, 0, 0));
             assert!((s.rgba(1, 0)[3] - 0.5).abs() < 0.01, "{fmt:?} clear at 50 %");
             // Locked transparency keeps the alpha, so Clear does nothing.
-            assert!(bucket_fill_inks(&mut s, a, (0, 0), 0.0, true, false, 1.0, None, true, red, None, FillMode::Clear));
+            assert!(bucket_fill_inks(&mut s, a, (0, 0), 0.0, true, false, 1.0, None, true, red, None, FillMode::Clear, 0, 0));
             assert!((s.rgba(1, 0)[3] - 0.5).abs() < 0.01, "{fmt:?} locked");
         }
     }
