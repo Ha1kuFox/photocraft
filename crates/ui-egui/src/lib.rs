@@ -2724,6 +2724,9 @@ mod stroke_timing_tests;
 mod polygon_lasso_tests;
 
 #[cfg(test)]
+mod studio_options_tests;
+
+#[cfg(test)]
 mod window_frame_tests;
 
 #[cfg(test)]

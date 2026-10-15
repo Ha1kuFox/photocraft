@@ -1,0 +1,68 @@
+//! Studio-layout options bars: marquee, lasso, crop and perspective-crop tools
+//! show the same controls as the Pro layout (with the hint), not just the hint.
+
+use egui_kittest::kittest::Queryable;
+use serde_json::json;
+
+use crate::PhotocraftApp;
+use crate::state::Tool;
+
+/// Options-bar harness in the Studio (non-pro) theme, like the bucket UI tests.
+fn options_bar_harness(tool: Tool) -> egui_kittest::Harness<'static, PhotocraftApp> {
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    app.session.prefs.edit(|p| p.interface.language = "en".into());
+    app.run("file.new", json!({"width": 40, "height": 30})).unwrap();
+    app.ui.tool = tool;
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1600.0, 60.0)).build_ui_state(
+        |ui, app: &mut PhotocraftApp| {
+            if !ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                return;
+            }
+            crate::panels::options_bar(app, ui);
+        },
+        app,
+    );
+    PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::Studio);
+    h.run_steps(4);
+    h
+}
+
+#[test]
+fn studio_marquee_bar_has_feather_style_and_select_and_mask() {
+    let h = options_bar_harness(Tool::RectMarquee);
+    for label in ["Feather", "Style", "Select and Mask…"] {
+        assert!(h.query_by_label(label).is_some(), "options bar shows {label}");
+    }
+}
+
+#[test]
+fn studio_lasso_bar_has_feather_and_anti_alias() {
+    let h = options_bar_harness(Tool::Lasso);
+    for label in ["Feather", "Anti-alias", "Select and Mask…"] {
+        assert!(h.query_by_label(label).is_some(), "options bar shows {label}");
+    }
+}
+
+#[test]
+fn studio_magnetic_lasso_bar_has_edge_controls() {
+    let h = options_bar_harness(Tool::MagneticLasso);
+    for label in ["Width", "Contrast", "Frequency"] {
+        assert!(h.query_by_label(label).is_some(), "options bar shows {label}");
+    }
+}
+
+#[test]
+fn studio_crop_bar_has_fill_and_commit_controls() {
+    let h = options_bar_harness(Tool::Crop);
+    for label in ["Delete Cropped Pixels", "Clear"] {
+        assert!(h.query_by_label(label).is_some(), "options bar shows {label}");
+    }
+}
+
+#[test]
+fn studio_perspective_crop_bar_has_grid_and_front_image() {
+    let h = options_bar_harness(Tool::PerspectiveCrop);
+    for label in ["Show Grid", "Front Image", "Clear"] {
+        assert!(h.query_by_label(label).is_some(), "options bar shows {label}");
+    }
+}

@@ -1086,7 +1086,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         widgets::vline(ui, 22.0);
                         widgets::checkbox(ui, &mut b.mixer.sample_all_layers, tl!("Sample All Layers"));
                     }
-                    Tool::RectMarquee | Tool::EllipseMarquee | Tool::SingleRowMarquee | Tool::SingleColumnMarquee if t.pro => {
+                    Tool::RectMarquee | Tool::EllipseMarquee | Tool::SingleRowMarquee | Tool::SingleColumnMarquee => {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         for (i, (icon, tip)) in [
                             ("square", tl!("New selection").to_string()),
@@ -1138,8 +1138,32 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         if widgets::secondary_button(ui, tl!("Select and Mask…"), 0.0).clicked() {
                             let _ = crate::menus::invoke(app, ui.ctx(), "select.selectAndMask", json!({}));
                         }
+                        // Studio layout never had marquee options; the same bar applies (with the hint).
+                        if !t.pro {
+                            if matches!(tool, Tool::RectMarquee | Tool::EllipseMarquee) {
+                                hint(
+                                    ui,
+                                    &format!(
+                                        "Drag to select  ·  {} add  ·  {} subtract  ·  {} intersect  ·  click to deselect",
+                                        crate::shortcuts::pretty("Shift"),
+                                        crate::shortcuts::pretty("Alt"),
+                                        crate::shortcuts::pretty("Shift+Alt")
+                                    ),
+                                );
+                            } else {
+                                hint(
+                                    ui,
+                                    &format!(
+                                        "Click to select a one-pixel line  ·  {} add  ·  {} subtract  ·  {} intersect",
+                                        crate::shortcuts::pretty("Shift"),
+                                        crate::shortcuts::pretty("Alt"),
+                                        crate::shortcuts::pretty("Shift+Alt")
+                                    ),
+                                );
+                            }
+                        }
                     }
-                    Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso if t.pro => {
+                    Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso => {
                         selection_mode_buttons(app, ui);
                         widgets::vline(ui, 22.0);
                         opt_label(ui, tl!("Feather"));
@@ -1184,6 +1208,26 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                                     &[("key", &crate::shortcuts::pretty("Enter")), ("del", &crate::shortcuts::pretty("Backspace"))],
                                 ),
                             );
+                        }
+                        // Studio layout never had lasso options; the same bar applies (with the hint).
+                        if !t.pro {
+                            if app.ui.tool == Tool::MagneticLasso {
+                                hint(
+                                    ui,
+                                    &crate::i18n::fmt(
+                                        tl!("Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close"),
+                                        &[("alt", &crate::shortcuts::pretty("Alt"))],
+                                    ),
+                                );
+                            } else {
+                                hint(
+                                    ui,
+                                    &crate::i18n::fmt(
+                                        tl!("Drag or click polygon points · hold Alt during lasso for straight segments · {add} add · {sub} before drawing subtracts"),
+                                        &[("add", &crate::shortcuts::pretty("Shift")), ("sub", &crate::shortcuts::pretty("Alt"))],
+                                    ),
+                                );
+                            }
                         }
                     }
                     Tool::MagicWand => {
@@ -1260,8 +1304,20 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         // Live mode: the options also change a selected gradient fill layer.
                         crate::gradient_ui::options_changed(app, &before);
                     }
-                    Tool::PerspectiveCrop if t.pro => crate::perspective_crop_ui::options_bar(app, ui),
-                    Tool::Crop if t.pro => {
+                    // Studio layout never had perspective-crop options; the same bar applies (with the hint).
+                    Tool::PerspectiveCrop => {
+                        crate::perspective_crop_ui::options_bar(app, ui);
+                        if !t.pro {
+                            hint(
+                                ui,
+                                &crate::i18n::fmt(
+                                    tl!("Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels"),
+                                    &[("commit", &crate::shortcuts::pretty("Enter"))],
+                                ),
+                            );
+                        }
+                    }
+                    Tool::Crop => {
                         let before_ratio = crate::crop_ui::preset_ratio(app);
                         let doc_size = app.session.active().map_or((0.0, 0.0), |s| (f64::from(s.doc.size.width), f64::from(s.doc.size.height)));
                         // Ratios, sizes, saved presets, New / Delete Crop Preset… (#2443, #1919).
@@ -1310,6 +1366,20 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         }
                         if pick_shield_color {
                             crate::crop_shield::pick_custom_color(app);
+                        }
+                        // Studio layout never had crop options; the same bar applies (with the hint).
+                        if !t.pro {
+                            hint(
+                                ui,
+                                &crate::i18n::fmt(
+                                    tl!("Drag a crop box · drag inside to move · edges resize ({ratio} ratio, {centre} centre) · Space moves while drawing · arrows nudge · X swaps orientation · {commit} commits · Esc cancels"),
+                                    &[
+                                        ("ratio", &crate::shortcuts::pretty("Shift")),
+                                        ("centre", &crate::shortcuts::pretty("Alt")),
+                                        ("commit", &crate::shortcuts::pretty("Enter")),
+                                    ],
+                                ),
+                            );
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if icons::button(
@@ -1372,24 +1442,6 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             section(ui, tl!("Distribute"), "layer.distribute.");
                         });
                     }
-                    Tool::RectMarquee | Tool::EllipseMarquee => hint(
-                        ui,
-                        &format!(
-                            "Drag to select  ·  {} add  ·  {} subtract  ·  {} intersect  ·  click to deselect",
-                            crate::shortcuts::pretty("Shift"),
-                            crate::shortcuts::pretty("Alt"),
-                            crate::shortcuts::pretty("Shift+Alt")
-                        ),
-                    ),
-                    Tool::SingleRowMarquee | Tool::SingleColumnMarquee => hint(
-                        ui,
-                        &format!(
-                            "Click to select a one-pixel line  ·  {} add  ·  {} subtract  ·  {} intersect",
-                            crate::shortcuts::pretty("Shift"),
-                            crate::shortcuts::pretty("Alt"),
-                            crate::shortcuts::pretty("Shift+Alt")
-                        ),
-                    ),
                     Tool::Move => {
                         // The Studio themes keep Photoshop's Auto-Select toggle too (#1275).
                         widgets::checkbox(ui, &mut app.ui.tool_options.move_auto_select, tl!("Auto-Select:"));
@@ -1458,38 +1510,6 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             app.ui.views[i].fit_pending = false;
                         }
                     }
-                    Tool::Lasso | Tool::PolygonLasso => hint(
-                        ui,
-                        &crate::i18n::fmt(
-                            tl!("Drag or click polygon points · hold Alt during lasso for straight segments · {add} add · {sub} before drawing subtracts"),
-                            &[("add", &crate::shortcuts::pretty("Shift")), ("sub", &crate::shortcuts::pretty("Alt"))],
-                        ),
-                    ),
-                    Tool::MagneticLasso => hint(
-                        ui,
-                        &crate::i18n::fmt(
-                            tl!("Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close"),
-                            &[("alt", &crate::shortcuts::pretty("Alt"))],
-                        ),
-                    ),
-                    Tool::Crop => hint(
-                        ui,
-                        &crate::i18n::fmt(
-                            tl!("Drag a crop box · drag inside to move · edges resize ({ratio} ratio, {centre} centre) · Space moves while drawing · arrows nudge · X swaps orientation · {commit} commits · Esc cancels"),
-                            &[
-                                ("ratio", &crate::shortcuts::pretty("Shift")),
-                                ("centre", &crate::shortcuts::pretty("Alt")),
-                                ("commit", &crate::shortcuts::pretty("Enter")),
-                            ],
-                        ),
-                    ),
-                    Tool::PerspectiveCrop => hint(
-                        ui,
-                        &crate::i18n::fmt(
-                            tl!("Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels"),
-                            &[("commit", &crate::shortcuts::pretty("Enter"))],
-                        ),
-                    ),
                     // Retouching and smart-selection tools draw their bar in `retouch_ui::options_bar`.
                     _ => {}
                 }
