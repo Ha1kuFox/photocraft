@@ -918,10 +918,10 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             // Include its gutter in the container layout, including right-aligned actions.
             egui::Frame::NONE.inner_margin(egui::Margin { right: 2, ..Default::default() }).show(ui, |ui| {
             crate::direction::horizontal_centered(ui, |ui| {
-                if t.pro {
-                    crate::chrome_ui::home_button(app, ui);
-                    widgets::vline(ui, 22.0);
-                }
+                // The Home toggle is in every theme, not only Pro: with documents open and
+                // auto-show off it is the only way back to the Home screen.
+                crate::chrome_ui::home_button(app, ui);
+                widgets::vline(ui, 22.0);
                 let tool_icon = icons::button(ui, icons::tool_icon(app.ui.tool), if t.pro { 26.0 } else { 28.0 }, !t.pro, tl!(app.ui.tool.label()));
                 // Photoshop: right-click the tool icon for Reset Tool / Reset All Tools (#2825).
                 let mut reset = None;
@@ -1064,9 +1064,16 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         let fixed = block || crate::eraser_ui::pencil_mode(app, app.ui.tool);
                         ui.add_enabled_ui(!fixed, |ui| percent_field(ui, tl!("Hardness"), &mut b.hardness, 0.0..=100.0, 66.0));
                         ui.add_enabled_ui(!block, |ui| percent_field(ui, tl!("Opacity"), &mut b.opacity, 0.0..=100.0, 66.0));
-                        ui.add_enabled_ui(!fixed, |ui| percent_field(ui, tl!("Flow"), &mut b.flow, 1.0..=100.0, 66.0));
+                        ui.add_enabled_ui(!fixed, |ui| {
+                            percent_field(ui, tl!("Flow"), &mut b.flow, 1.0..=100.0, 66.0);
+                            let airbrush = icons::button(ui, "sparkles", 24.0, b.build_up, tl!("Enable airbrush-style build-up effects"));
+                            if crate::brush_picker::named(airbrush, "Enable airbrush-style build-up effects").clicked() {
+                                b.build_up = !b.build_up;
+                            }
+                        });
                         opt_label(ui, tl!("Smoothing"));
                         smoothing_field(ui, b, 66.0);
+                        smoothing_options(ui, b);
                         widgets::vline(ui, 22.0);
                         widgets::toggle(ui, &mut b.pressure_size, tl!("Pressure for Size"));
                         widgets::toggle(ui, &mut b.pressure_opacity, tl!("Pressure for Opacity"));
@@ -1400,7 +1407,9 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     }
                     // Every theme gets the font, style and size controls (#1387), as with Auto-Select (#1275).
                     Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => crate::type_tool::options_bar(app, ui),
-                    Tool::Move if t.pro => {
+                    // Every theme gets Auto-Select, the target, Show Transform Controls and the
+                    // align/distribute controls (#1275, #5740); Studio keeps its hint too.
+                    Tool::Move => {
                         let o = &mut app.ui.tool_options;
                         widgets::checkbox(ui, &mut o.move_auto_select, tl!("Auto-Select:"));
                         widgets::dropdown(
@@ -1441,14 +1450,9 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             ui.separator();
                             section(ui, tl!("Distribute"), "layer.distribute.");
                         });
-                    }
-                    Tool::Move => {
-                        // The Studio themes keep Photoshop's Auto-Select toggle too (#1275).
-                        widgets::checkbox(ui, &mut app.ui.tool_options.move_auto_select, tl!("Auto-Select:"));
-                        // And Show Transform Controls (#5740): without it the box could not be
-                        // turned on outside the Pro themes.
-                        widgets::checkbox(ui, &mut app.ui.tool_options.move_show_transform, tl!("Show Transform Controls"));
-                        hint(ui, tl!("Drag to move the active layer"));
+                        if !t.pro {
+                            hint(ui, tl!("Drag to move the active layer"));
+                        }
                     }
                     Tool::Eyedropper => crate::eyedropper_ui::options(app, ui),
                     Tool::Zoom => {

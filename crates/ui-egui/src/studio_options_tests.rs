@@ -66,3 +66,30 @@ fn studio_perspective_crop_bar_has_grid_and_front_image() {
         assert!(h.query_by_label(label).is_some(), "options bar shows {label}");
     }
 }
+
+#[test]
+fn studio_move_bar_has_target_and_align_controls() {
+    use egui_kittest::kittest::NodeT;
+    let h = options_bar_harness(Tool::Move);
+    for label in ["Auto-Select:", "Show Transform Controls", "Align and distribute"] {
+        assert!(h.query_by_label(label).is_some(), "options bar shows {label}");
+    }
+    assert!(
+        h.query_all_by_role(egui::accesskit::Role::ComboBox).any(|c| c.accesskit_node().value().as_deref() == Some("Group")),
+        "the target dropdown offers Group"
+    );
+}
+
+#[test]
+fn studio_brush_bar_has_airbrush_and_smoothing_options() {
+    let h = options_bar_harness(Tool::Brush);
+    for label in ["Enable airbrush-style build-up effects", "Set additional smoothing options"] {
+        assert!(h.query_by_label(label).is_some(), "options bar shows {label}");
+    }
+}
+
+#[test]
+fn studio_bar_has_home_toggle() {
+    let h = options_bar_harness(Tool::Move);
+    assert!(h.query_by_label("Home").is_some(), "options bar shows Home");
+}
