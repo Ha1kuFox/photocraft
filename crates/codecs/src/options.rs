@@ -100,12 +100,13 @@ pub enum PngCompression {
     Best,
 }
 
-/// TIFF strip compression.
+/// TIFF strip compression. The default is none, as in Photoshop: uncompressed strips are the
+/// only kind every TIFF reader opens (Deflate and the predictor are not baseline TIFF, #4484).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TiffCompression {
+    #[default]
     None,
     Lzw,
-    #[default]
     Deflate,
     PackBits,
 }
@@ -190,7 +191,7 @@ impl Default for EncodeOptions {
             png_interlaced: false,
             webp_lossless: true,
             webp_quality: 80,
-            tiff_compression: TiffCompression::Deflate,
+            tiff_compression: TiffCompression::None,
             tiff_bigtiff: false,
             exr_compression: ExrCompression::Zip16,
             dpx_bits: None,

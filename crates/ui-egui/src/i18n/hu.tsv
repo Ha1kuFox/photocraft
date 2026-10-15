@@ -400,6 +400,7 @@
 	Smooth…	Simítás…
 	Solid Color…	Egyszínű kitöltés…
 	Stack Mode	Halommód
+	Choose Stack Mode:	Halommód kiválasztása:
 	Standard Deviation	Szórás
 	Subject	Fő téma
 	Subtract Front Shape	Elülső alakzat kivonása
@@ -562,6 +563,11 @@
 	Facet	Lapolás
 	Fibers…	Szálak…
 	Field Blur…	Mezőelmosás…
+	No pin selected	Nincs kijelölt tű
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Kattints a képre tű hozzáadásához; húzd a tűt az áthelyezéséhez, vagy a gyűrűjét az elmosás módosításához. A Delete törli a kijelölt tűt.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Húzd a körvonal fogantyúit az átméretezéshez és az elforgatáshoz, a négyzetet a sarkok lekerekítéséhez, a belső pontokat pedig annak beállításához, hol kezdődjön az elmosás.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Húzd a tűt a sáv áthelyezéséhez, vagy a gyűrűjét az elmosás módosításához. Húzd a folytonos vonalakat az éles sáv szélesítéséhez, a szaggatott vonalakat az átmenet beállításához, a pontokat pedig a sáv elforgatásához.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Húzd a körvonal fogantyúit az átméretezéshez és az elforgatáshoz; a gyűrű az elmosás szögét állítja be.
 	Fill Path…	Útvonal kitöltése…
 	Fill Screen	Képernyő kitöltése
 	Filter	Szűrő
@@ -605,6 +611,7 @@
 	HSB/HSL	HSB/HSL
 	Huge	Óriási
 	Image Processor	Képfeldolgozó
+	Include All Subfolders	Az összes almappa belefoglalása
 	Indexed Color…	Indexelt szín…
 	Info	Információ
 	Install Plug-in	Bővítmény telepítése
@@ -1189,7 +1196,7 @@
 	Capture Brush Size in Preset	Ecsetméret rögzítése az előbeállításban
 	Include Tool Settings	Eszközbeállítások belefoglalása
 	Include Color	Szín belefoglalása
-	Enter a name for the brush preset	Adjon nevet az ecset-előbeállításnak
+	Enter a name for the brush preset	Adj nevet az ecset-előbeállításnak
 	A brush preset with this name already exists	Már van ilyen nevű ecset-előbeállítás
 	New Crop Preset…	Új körbevágási előbeállítás…
 	New Tool Preset	Új eszköz-előbeállítás
@@ -1723,6 +1730,7 @@ layerLabel	Magenta	Bíbor
 	Always use pressure for opacity	Mindig nyomásfüggő átlátszatlanság
 	Always use pressure for size	Mindig nyomásfüggő méret
 	Appearance Mode	Megjelenési mód
+	Presentation	Megjelenítés
 	Auto Erase	Automatikus radírozás
 	Auto Hide	Automatikus elrejtés
 	Auto-Select:	Automatikus kijelölés:
@@ -2491,6 +2499,9 @@ navigator	Zoom	Nagyítás mértéke
 	Camera Raw Filter ({layer})	Camera Raw szűrő ({layer})
 	Camera Raw isn't open	A Camera Raw nincs megnyitva
 	Cancelled opening {name}	Megnyitás megszakítva: {name}
+	The document “{name}” does not have an embedded {mode} profile.	Nincs beágyazott profil ({mode}) ebben a dokumentumban: „{name}”
+	The document “{name}” has an embedded color profile that does not match the current {mode} working space.	A dokumentum beágyazott színprofilja nem egyezik az aktuális munkaszíntérrel ({mode}): „{name}”
+	Working: {working}	Munkaszíntér: {working}
 	Cancelled {label}	Megszakítva: {label}
 	Clarity	Tisztaság
 	Color Detail	Színrészletesség
@@ -2653,6 +2664,7 @@ cameraRaw	Yellow	Sárga
 	Autosave minutes	Automatikus mentés gyakorisága (perc)
 	Background Color	Háttérszín
 	Background Contents	Háttér tartalma
+	Custom background color	Egyéni háttérszín
 	Batch	Kötegelt feldolgozás
 	Binary assets added	Hozzáadott bináris elemek
 	Binary assets removed	Eltávolított bináris elemek
@@ -2702,7 +2714,6 @@ cameraRaw	Yellow	Sárga
 	Contents:	Tartalom:
 	Contributors	Közreműködők
 	Contributors: {contributors} · Commits: {commits}	Közreműködők: {contributors} · Commitok: {commits}
-	Convert document's colors to the working space	A dokumentum színeinek átalakítása a munkaszíntérbe
 	Convert to sRGB	Átalakítás sRGB-re
 	Cool	Hideg
 	Copies	Példányszám
@@ -2731,6 +2742,7 @@ cameraRaw	Yellow	Sárga
 	Defaults	Alapértékek
 	Delete	Törlés
 	Delete Shortcut	Billentyűparancs törlése
+	Add Shortcut	Billentyűparancs hozzáadása
 	Description	Leírás
 	Diffusion	Diffúzió
 	DirectX 12	DirectX 12
@@ -2855,6 +2867,8 @@ cameraRaw	Yellow	Sárga
 	No saved presets yet.	Még nincs mentett előbeállítás.
 	Not a web colour: click for the nearest web colour	Nem webes szín: kattints a legközelebbi webes színért
 	Notification Duration (seconds)	Értesítés időtartama (másodperc)
+	Bundle Arrow-Key Nudges	Nyílbillentyűs mozgatások összevonása
+	Nudge Bundle Pause (ms)	Összevonási szünet (ms)
 	Number	Szám
 	OK	OK
 	Only Web Colors	Csak webes színek
@@ -3001,7 +3015,6 @@ cameraRaw	Yellow	Sárga
 	URLs	URL-ek
 	Use Default	Alapértelmezés használata
 	Use shift key for tool switch	Eszközváltás a Shift billentyűvel
-	Use the embedded profile (instead of the working space)	A beágyazott profil használata (a munkaszíntér helyett)
 	Username	Felhasználónév
 	Version {version}	Verzió: {version}
 	Vulkan	Vulkan
@@ -3126,6 +3139,7 @@ cameraRaw	Yellow	Sárga
 	Concise	Tömör
 	Constrain proportions	Arányok megtartása
 	Constraints	Megkötések
+	Background (Default)	Háttér (alapértelmezett)
 	Content-Aware Fill	Tartalomérzékeny kitöltés
 	Content-Aware Move Tool	Tartalomérzékeny mozgatás
 	Contract	Szűkítés
@@ -3536,6 +3550,8 @@ cameraRaw	Yellow	Sárga
 	shortcut	billentyűparancs
 	Shortcut	Billentyűparancs
 	Show canvas dots	Vászonpontok megjelenítése
+	Clip thumbnails to layer bounds	Bélyegképek levágása a réteg határaira
+	Clip Thumbnails to Layer Bounds	Bélyegképek levágása a réteg határaira
 	Show channels in color	Csatornák megjelenítése színesen
 	Show crosshair in brush tip	Szálkereszt az ecsethegyben
 	Show extension panels	Bővítménypanelek megjelenítése
@@ -4012,6 +4028,8 @@ cameraRaw	Yellow	Sárga
 	Transform On Drop	Átalakítás elengedéskor
 	Vanishing Point is not active	Az Enyészpont nem aktív
 	Vanishing Point: click four corners to create a plane	Enyészpont: sík létrehozásához kattints a négy sarokra
+	Response curve	Válaszgörbe
+	Show home recent files	Legutóbbi fájlok megjelenítése a kezdőképernyőn
 	Clear Brush Controls	Ecsetvezérlők törlése
 	Reset All Locked Settings	Összes zárolt beállítás visszaállítása
 	Copy Texture to Other Tools	Textúra másolása más eszközökre
@@ -4026,6 +4044,7 @@ cameraRaw	Yellow	Sárga
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	{n} művelet mentve. Cél: {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	{n} Photoshop-megfelelő nélküli lépés kihagyva
 
+	Starting serial	Kezdő sorszám
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Leállítás beszúrása…
 	Save Set…	Készlet mentése…
@@ -4041,7 +4060,7 @@ cameraRaw	Yellow	Sárga
 	Drag to pan · Scroll to zoom · Double-click to fit	Húzás: mozgatás · Görgetés: nagyítás · Dupla kattintás: igazítás
 	Gradient Preset Options	Színátmenet-előbeállítás beállításai
 	Import .GRD	.GRD importálása
-	Choose a gradient file (.grd).	Válasszon színátmenetfájlt (.grd).
+	Choose a gradient file (.grd).	Válassz színátmenetfájlt (.grd).
 	Save Settings…	Beállítások mentése…
 	Load Settings…	Beállítások betöltése…
 	Save these settings as a Camera Raw .xmp file	A beállítások mentése Camera Raw .xmp-fájlként
@@ -4049,6 +4068,13 @@ cameraRaw	Yellow	Sárga
 	Loaded Camera Raw settings from {file}	Camera Raw-beállítások betöltve innen: {file}
 	Loaded Camera Raw settings from {file} ({n} not supported)	Camera Raw-beállítások betöltve innen: {file} ({n} nem támogatott)
 	Auto Add/Delete	Automatikus hozzáadás/törlés
+
+# Native Windows printing qualification
+	Don't also tick Mirror Image in Print Settings…: the two flips cancel out.	A nyomtatási beállításokban ne jelöld be a tükrözést is: a két tükrözés kioltja egymást.
+	Print Settings…	Nyomtatási beállítások…
+	Remember to turn off the printer's own colour management in Print Settings…	Ne felejtsd el kikapcsolni a nyomtató saját színkezelését a nyomtatási beállításokban…
+	Sent to {printer}	Elküldve ide: {printer}
+	set in Print Settings…	a nyomtatási beállításokban adható meg…
 	ICO is limited to 256 × 256 pixels	Az ICO legfeljebb 256 × 256 képpont lehet
 
 # Channel Options and New Spot Channel (#3761)
@@ -4056,3 +4082,38 @@ cameraRaw	Yellow	Sárga
 	Color Indicates:	A szín jelzése:
 	Ink Characteristics	Festék jellemzői
 	Solidity:	Fedőképesség:
+	Redrawing	Újrarajzolás
+# Embedded Profile Mismatch: profile names beside the choices, Remember this choice
+	Use the embedded profile ({profile})	A beágyazott profil használata ({profile})
+	Convert to the working space ({profile})	Átalakítás a munkaszíntérbe ({profile})
+	Remember this choice for future images	A választás megjegyzése a későbbi képekhez
+	Turn the prompt back on with Ask On Mismatch in Edit › Color Settings.	A kérdést a Szerkesztés › Színbeállítások „Profileltérés: rákérdezés megnyitáskor” beállításával kapcsolhatod vissza.
+	Button Mode	Gomb mód
+	Button Mode On	Gomb mód be
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Felület sötétítése
+	Lighten Interface	Felület világosítása
+# Bevel & Emboss Technique.
+	Technique	Technika
+	Chisel Hard	Kemény vésés
+	Chisel Soft	Lágy vésés
+	Open color-less EXR as ACEScg	Színinformáció nélküli EXR megnyitása ACEScg-ként
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	Kijelölt segédvonalak szerkesztése
+	Clear Selected Guides	Kijelölt segédvonalak törlése
+	Delete this set	Készlet törlése
+	New Set…	Új készlet…
+	PhotoCraft Defaults	PhotoCraft alapértelmezések
+	Save a list of these shortcuts as a web page	A billentyűparancsok listájának mentése weboldalként
+	Save the changes to this set	A készlet változásainak mentése
+	Save these shortcuts as a .kys file	A billentyűparancsok mentése .kys fájlként
+	Save these shortcuts as a new set	A billentyűparancsok mentése új készletként
+	Set deleted.	Készlet törölve.
+	Set saved.	Készlet mentve.
+	Set:	Készlet:
+	Summarize…	Összegzés…
+	There are too many sets: delete one first.	Túl sok készlet van: előbb töröljön egyet.
+	set name	készlet neve
+	{set} (modified)	{set} (módosítva)

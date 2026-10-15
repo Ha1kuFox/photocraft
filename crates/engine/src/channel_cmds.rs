@@ -152,6 +152,7 @@ pub(crate) fn fix_view(st: &mut DocState) {
 fn touch(st: &mut DocState) {
     let clean = st.saved_revision == st.revision;
     st.revision += 1;
+    st.view_revision += 1;
     if clean {
         st.saved_revision = st.revision;
     }
@@ -179,6 +180,82 @@ pub fn composite_name(mode: ColorMode) -> &'static str {
         ColorMode::Grayscale => "Gray",
         _ => "RGB",
     }
+}
+
+/// The Curves dialog's Channel popup lists only this channel when the Channels panel has a
+/// single non-composite target (a colour component, layer mask, saved channel or Quick Mask).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IsolatedCurveChannel {
+    /// Channels-panel name, including a custom alpha name or "{layer} Mask".
+    pub name: String,
+    /// Curves param key: empty = composite `points`; otherwise `red`/`green`/…
+    pub key: &'static str,
+    /// Index into the tone-space histograms (composite = 0 for RGB/CMYK).
+    pub hist: usize,
+    /// Colour components keep their curve tint; masks and alphas do not.
+    pub tint: bool,
+    /// Built-in labels (colour channels, Quick Mask) follow the interface language; a custom
+    /// alpha name or a "{layer} Mask" keeps the layer name, so it stays exactly as entered (#5335).
+    pub translate: bool,
+    /// The gray plane this target edits, whatever the document's colour mode; its surface is
+    /// what the dialog's histogram must describe (#5335). None for colour components.
+    pub gray: Option<GraySurface>,
+}
+
+/// A grayscale plane Curves can target: the dialog parses and previews its curves in gray levels
+/// even in Lab and CMYK documents (#5335).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GraySurface {
+    /// The active layer's layer mask.
+    LayerMask,
+    /// A saved channel, as an index into [`Document::channels`].
+    Alpha(usize),
+    /// The Quick Mask.
+    QuickMask,
+}
+
+/// Isolated Curves channel for the active document, matching [`inject_target`].
+pub fn isolated_curve_channel(st: &DocState) -> Option<IsolatedCurveChannel> {
+    isolated_curve_channel_for(st, false)
+}
+
+/// [`isolated_curve_channel`] with the Layers panel's mask target added: clicking a mask
+/// thumbnail targets it without touching the Channels panel, and both ways of selecting the mask
+/// must give the same Curves dropdown (#5335).
+pub fn isolated_curve_channel_for(st: &DocState, layers_panel_mask: bool) -> Option<IsolatedCurveChannel> {
+    let doc = &st.doc;
+    let mode = edit_mode(doc);
+    match st.channel_view.target {
+        ChannelTarget::Color(k) => {
+            let names = color_names(mode);
+            let keys = crate::adjust_params::channel_keys(crate::adjust_params::default_space(mode));
+            let name = names.get(k)?.to_string();
+            let key = *keys.get(k)?;
+            let hist = if matches!(mode, ColorMode::Lab) { k } else { k.saturating_add(1) };
+            Some(IsolatedCurveChannel { name, key, hist, tint: true, translate: true, gray: None })
+        }
+        ChannelTarget::Alpha(i) => doc.channels.get(i).map(|c| IsolatedCurveChannel {
+            name: c.name.clone(),
+            key: "",
+            hist: 0,
+            tint: false,
+            translate: false,
+            gray: Some(GraySurface::Alpha(i)),
+        }),
+        ChannelTarget::Composite if doc.quick_mask.is_some() => {
+            Some(IsolatedCurveChannel { name: "Quick Mask".into(), key: "", hist: 0, tint: false, translate: true, gray: Some(GraySurface::QuickMask) })
+        }
+        ChannelTarget::LayerMask => layer_mask_curve_channel(st),
+        ChannelTarget::Composite if crate::mask_view_cmds::current(st).is_some() || layers_panel_mask => layer_mask_curve_channel(st),
+        _ => None,
+    }
+}
+
+fn layer_mask_curve_channel(st: &DocState) -> Option<IsolatedCurveChannel> {
+    let layer = st.active_layer.and_then(|id| st.doc.layer(id))?;
+    layer.mask.as_ref()?;
+    let name = format!("{} Mask", layer.name);
+    Some(IsolatedCurveChannel { name, key: "", hist: 0, tint: false, translate: false, gray: Some(GraySurface::LayerMask) })
 }
 
 fn edit_mode(doc: &Document) -> ColorMode {
@@ -746,15 +823,16 @@ pub(crate) fn clear_color_channel(doc: &mut Document, id: LayerId, k: usize, bac
     if area.is_empty() {
         return Ok(());
     }
-    let cover = sel.map(|m| (m.read_region(area), m.format().channels().max(1)));
-    let mut px = surf.read_region(area);
+    let cover =
+        sel.as_ref().map(|m| crate::allocation::read_region(m, area, "clearing a channel selection").map(|v| (v, m.format().channels().max(1)))).transpose()?;
+    let mut px = crate::allocation::read_region(surf, area, "clearing a channel")?;
     for (i, p) in px.chunks_exact_mut(n).enumerate() {
         let w = cover.as_ref().map_or(1.0, |(m, mk)| m.get(i * mk).copied().unwrap_or(0.0));
         if let Some(c) = p.get_mut(k) {
             *c += (v - *c) * w.clamp(0.0, 1.0);
         }
     }
-    surf.write_region(area, &px);
+    surf.try_write_region(area, &px)?;
     surf.prune();
     Ok(())
 }

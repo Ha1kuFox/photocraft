@@ -225,8 +225,8 @@ pub fn import(name: &str, bytes: &[u8], sel: &Selection) -> Result<ImportResult,
         return Err(IoError::Unsupported("no parts or groups selected".into()));
     }
 
-    // Decode each needed whole part once; groups come from their part's named channels.
-    let mut part_pixels: Vec<Option<Image>> = vec![None; info.len()];
+    // Each chosen part (deduplicated above) decodes once; groups come from their part's named
+    // channels.
     let mut layers: Vec<Layer> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
     let mut gray_only = true;
@@ -234,14 +234,7 @@ pub fn import(name: &str, bytes: &[u8], sel: &Selection) -> Result<ImportResult,
     let mut f16_seen = false;
 
     for part in &chosen_parts {
-        let img = match &part_pixels[part.index] {
-            Some(img) => img.clone(),
-            None => {
-                let img = codecs::decode_exr_part(bytes, part.index, &opts)?;
-                part_pixels[part.index] = Some(img.clone());
-                img
-            }
-        };
+        let img = codecs::decode_exr_part(bytes, part.index, &opts)?;
         if img.sample_type() == SampleType::F16 {
             f16_seen = true;
         }

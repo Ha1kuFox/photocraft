@@ -100,7 +100,7 @@ pub fn fill(s: &mut Session, p: &Value) -> Result<Value> {
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let doc_bounds = st.doc.bounds();
     let sel = st.doc.selection.clone();
-    let area = sel.as_ref().map(|m| m.content_bounds()).unwrap_or(doc_bounds);
+    let area = sel.as_ref().map_or(doc_bounds, |m| m.content_bounds().intersect(&doc_bounds));
     let mut out = json!({ "contents": contents });
     let restore = contents == "history";
     let source = match contents {
@@ -148,7 +148,6 @@ pub fn fill(s: &mut Session, p: &Value) -> Result<Value> {
         }
         _ => return Err(bad(format!("unknown contents `{contents}`"))),
     };
-    let area = area.intersect(&doc_bounds);
     if area.is_empty() {
         return Ok(out);
     }
@@ -236,24 +235,47 @@ pub(crate) fn blend_color_mask(
 /// The selection filled from its surroundings (`photocraft_algo::content_aware`), as straight
 /// RGBA over the sampling window. Only the selected pixels are used.
 fn content_aware(surf: &Surface, sel: &Surface, canvas: Rect, color_adaptation: bool, seed: u64) -> Result<Source> {
-    use photocraft_algo::content_aware::{FillOptions, color_level, fill, rotation_level};
     let hole_bounds = sel.content_bounds().intersect(&canvas);
     if hole_bounds.is_empty() {
         return Err(EngineError::Other("the selection is outside the canvas".into()));
     }
-    let window = sampling_window(hole_bounds, canvas);
+    let is_hole = |x: i32, y: i32| sel.sample_channel(x, y, 0) > 0.0;
+    let (window, filled) = content_aware_native(surf, hole_bounds, canvas, color_adaptation, seed, is_hole, |_, _| true)?;
     let fmt = surf.format();
-    let n = fmt.channels();
+    let px = filled.chunks_exact(fmt.channels().max(1)).map(|c| to_rgba(&fmt, c)).collect();
+    Ok(Source::Pixels(window, px))
+}
+
+/// The pixels `is_hole` picks inside `hole_bounds` filled from their surroundings
+/// (`photocraft_algo::content_aware`): Photoshop's sampling window around `hole_bounds`, sampling
+/// only the non-hole pixels `usable` allows. Returns the window and its pixels in the surface's
+/// own channels (the hole filled, the rest as read). Shared by Edit › Fill › Content-Aware and the
+/// Crop tool's Content-Aware fill (#3823).
+pub(crate) fn content_aware_native(
+    surf: &Surface,
+    hole_bounds: Rect,
+    canvas: Rect,
+    color_adaptation: bool,
+    seed: u64,
+    is_hole: impl Fn(i32, i32) -> bool,
+    usable: impl Fn(i32, i32) -> bool,
+) -> Result<(Rect, Vec<f32>)> {
+    use photocraft_algo::content_aware::{FillOptions, color_level, fill, rotation_level};
+    let window = sampling_window(hole_bounds, canvas);
+    let n = surf.format().channels();
     let (w, h) = window_size(window)?;
     let img = surf.read_region(window);
-    let mut hole = vec![false; w * h];
-    for (i, hv) in hole.iter_mut().enumerate() {
-        *hv = sel.sample_channel(window.x0 + (i % w) as i32, window.y0 + (i / w) as i32, 0) > 0.0;
+    let len = w.checked_mul(h).ok_or_else(|| EngineError::Other("the area is too large for Content-Aware fill".into()))?;
+    let mut hole = crate::allocation::filled(len, false, "Content-Aware fill")?;
+    let mut source = crate::allocation::filled(len, false, "Content-Aware fill")?;
+    for (i, (hv, sv)) in hole.iter_mut().zip(source.iter_mut()).enumerate() {
+        let (x, y) = (window.x0 + (i % w) as i32, window.y0 + (i / w) as i32);
+        *hv = is_hole(x, y);
+        *sv = !*hv && usable(x, y);
     }
-    if hole.iter().all(|h| *h) {
-        return Err(EngineError::Other("Content-Aware fill needs pixels outside the selection to sample from".into()));
+    if !source.iter().any(|s| *s) {
+        return Err(EngineError::Other("Content-Aware fill needs pixels outside the area to fill to sample from".into()));
     }
-    let source = vec![true; w * h];
     let opts = FillOptions {
         color_adaptation: color_level(if color_adaptation { "default" } else { "none" }),
         rotations: rotation_level("none"),
@@ -261,12 +283,10 @@ fn content_aware(surf: &Surface, sel: &Surface, canvas: Rect, color_adaptation: 
         mirror: false,
         seed,
     };
-    if img.len() != w * h * n {
+    if img.len() != len * n {
         return Err(EngineError::Other("could not read the layer pixels".into()));
     }
-    let filled = fill(w, h, n, &img, &hole, &source, &opts);
-    let px = filled.chunks_exact(n.max(1)).map(|c| to_rgba(&fmt, c)).collect();
-    Ok(Source::Pixels(window, px))
+    Ok((window, fill(w, h, n, &img, &hole, &source, &opts)))
 }
 
 /// Photoshop's Content-Aware sampling window around the selection bounds `hole`
@@ -527,6 +547,24 @@ mod tests {
 
     fn close(a: [f32; 4], b: [f32; 4]) -> bool {
         a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1.5 / 255.0)
+    }
+
+    #[test]
+    fn history_fill_reads_only_the_selection_inside_the_canvas() {
+        let mut s = session();
+        s.edit("selection", |doc, _| {
+            let mut selection = Surface::new(photocraft_color::PixelFormat::GRAY8);
+            selection.write_pixel(-2_000_000_000, -2_000_000_000, &[1.0]);
+            selection.write_pixel(4, 4, &[1.0]);
+            doc.selection = Some(selection);
+            Ok(())
+        })
+        .unwrap();
+        // Reading the full sparse selection rectangle overflows the allocation size;
+        // only its intersection with this small canvas is meaningful to Fill.
+        s.execute(CMD, json!({"contents": "history"})).unwrap();
+        assert!(s.undo());
+        assert!(s.active().unwrap().doc.selection.as_ref().unwrap().sample_channel(4, 4, 0) > 0.0);
     }
 
     #[test]

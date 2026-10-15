@@ -574,7 +574,7 @@ fn alt_tool(t: LiquifyTool) -> LiquifyTool {
 
 /// Alt+right-drag, and Control+Alt-drag, change the Liquify brush instead of painting (#4702).
 fn brush_resize_gesture(mods: egui::Modifiers, secondary: bool) -> bool {
-    (secondary && mods.alt) || (mods.ctrl && mods.alt && !secondary)
+    mods.alt && (secondary || mods.ctrl)
 }
 
 /// Horizontal motion sets the diameter (the circle's edge follows the pointer). Vertical motion

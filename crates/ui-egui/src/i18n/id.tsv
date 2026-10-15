@@ -370,6 +370,7 @@
 	Update Modified Content	Perbarui Isi yang Diubah
 	Update All Modified Content	Perbarui Semua Isi yang Diubah
 	Stack Mode	Mode Stack
+	Choose Stack Mode:	Pilih Mode Stack:
 	Entropy	Entropi
 	Kurtosis	Kurtosis
 	Maximum	Maksimum
@@ -535,6 +536,13 @@
 	Blur	Blur
 	Blur Gallery	Galeri Blur
 	Field Blur…	Field Blur…
+# Field Blur pins (#3373)
+	No pin selected	Tidak ada pin yang dipilih
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Klik gambar untuk menambah pin; seret pin untuk memindahkannya, atau cincinnya untuk mengubah blur. Delete menghapus pin yang dipilih.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Seret pegangan pada garis luar untuk mengubah ukuran dan memutarnya, kotak untuk membulatkan sudutnya, dan titik di dalam untuk menentukan di mana blur dimulai.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Seret pin untuk memindahkan pita, atau cincinnya untuk mengubah blur. Seret garis utuh untuk melebarkan pita tajam, garis putus-putus untuk mengatur transisi, dan titik untuk memutarnya.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Seret pegangan pada garis luar untuk mengubah ukuran dan memutarnya; cincin mengatur sudut blur.
+	Blur Angle	Sudut Blur
 	Iris Blur…	Iris Blur…
 	Tilt-Shift…	Tilt-Shift…
 	Path Blur…	Path Blur…
@@ -856,6 +864,7 @@
 	Background	Background
 	Background Color	Warna Background
 	Background Contents	Isi Background
+	Custom background color	Warna background kustom
 	Balance	Keseimbangan
 	Baseline	Baseline
 	Baseline shift	Geser baseline
@@ -963,7 +972,6 @@
 	Contiguous	Berdekatan
 	Contrast	Kontras
 	Control:	Kontrol:
-	Convert document's colors to the working space	Konversi warna dokumen ke working space
 	Convert to sRGB	Konversi ke sRGB
 	Copies	Salinan
 	Copper	Tembaga
@@ -1018,6 +1026,7 @@
 	Delete Group	Hapus Grup
 	Delete Layer Mask	Hapus Mask Layer
 	Delete Layers	Hapus Layer
+	Add Shortcut	Tambah Pintasan
 	Delete Shortcut	Hapus Pintasan
 	Delete Timeline	Hapus Timeline
 	Delete Tool Preset	Hapus Preset Alat
@@ -1545,7 +1554,6 @@
 	Use Default	Pakai Default
 	Use Legacy	Pakai Versi Lama
 	Use Measurement Scale	Pakai Skala Pengukuran
-	Use the embedded profile (instead of the working space)	Pakai profil tertanam (bukan working space)
 	Variables bind a layer's visibility, text or pixels to a named data slot.	Variabel mengikat visibilitas, teks, atau piksel sebuah layer ke slot data bernama.
 	Vertical scale	Skala vertikal
 	Vibrance	Vibrance
@@ -1863,6 +1871,8 @@
 	Camera Raw Defaults	Default Camera Raw
 	Canvas border	Border kanvas
 	Show canvas dots	Tampilkan titik kanvas
+	Clip thumbnails to layer bounds	Pangkas thumbnail ke batas layer
+	Clip Thumbnails to Layer Bounds	Pangkas Thumbnail ke Batas Layer
 	Canvas color	Warna kanvas
 	Canvas custom color	Warna kustom kanvas
 	Color picker	Pemilih warna
@@ -2049,7 +2059,8 @@
 	Expand group  ({key}-click: all groups)	Bentangkan grup  ({key}-klik: semua grup)
 	Fade steps	Langkah pudar
 	Hide the layer's effects  ({key}-click: all layers)	Sembunyikan efek layer  ({key}-klik: semua layer)
-	Import Brushes… (.abr)	Impor Kuas… (.abr)
+	Import Brushes… (.abr or image)	Impor Kuas… (.abr atau gambar)
+	Import Brush from Image…	Impor Kuas dari Gambar…
 	Move Group Down	Pindah Grup ke Bawah
 	Move Group Up	Pindah Grup ke Atas
 	Reset the brush to the defaults	Reset kuas ke default
@@ -2155,6 +2166,9 @@
 	No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.	Tidak ada path untuk dibuat seleksi: gambar dengan alat Pen atau pilih salah satu di panel Path.
 	Cancel opening	Batalkan pembukaan
 	Cancelled opening {name}	Pembukaan {name} dibatalkan
+	The document “{name}” does not have an embedded {mode} profile.	Dokumen “{name}” tidak memiliki profil {mode} tertanam.
+	The document “{name}” has an embedded color profile that does not match the current {mode} working space.	Dokumen “{name}” memiliki profil warna tertanam yang tidak cocok dengan working space {mode} saat ini.
+	Working: {working}	Working space: {working}
 	Developing {name}	Mengembangkan {name}
 	Cancelled {label}	{label} dibatalkan
 	Esc to cancel	Esc untuk batal
@@ -2468,7 +2482,6 @@
 	Choose…	Pilih…
 	Select Folder…	Pilih Folder…
 	Override Action "Save" Commands	Timpa Perintah Action "Save"
-	File Naming	Penamaan Berkas
 	Compatibility	Kompatibilitas
 	Mac OS	Mac OS
 	Unix	Unix
@@ -2842,6 +2855,7 @@ cameraRaw	Blending	Pembauran
 	Fuchsia	Fuksia
 	Violet	Ungu
 	Large document: redrawing on the CPU	Dokumen besar: menggambar ulang di CPU
+	Redrawing	Menggambar ulang
 	This redraw took {seconds} s on the CPU.	Penggambaran ulang di CPU ini memakan waktu {seconds} dtk.
 	Edits that change the whole document, such as a layer's blend mode, opacity or visibility, redraw all of it.	Suntingan yang mengubah seluruh dokumen, seperti mode campuran, opasitas, atau visibilitas layer, menggambar ulang semuanya.
 	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	Layer tidak muat dalam anggaran memori GPU. Menaikkan Pemakaian memori di Preferensi › Performa menaikkan anggaran, hingga seperempat memori komputer ini.
@@ -2908,6 +2922,8 @@ fontWeight	Italic	Miring
 	Color Picker (Layer Style Color)	Pemilih Warna (Warna Gaya Lapisan)
 	Auto Hide Notifications	Sembunyikan notifikasi secara otomatis
 	Notification Duration (seconds)	Durasi notifikasi (detik)
+	Bundle Arrow-Key Nudges	Gabungkan pergeseran tombol panah
+	Nudge Bundle Pause (ms)	Jeda penggabungan pergeseran (ms)
 	Appearance Mode	Mode tampilan
 	Dark Theme	Tema gelap
 	Light Theme	Tema terang
@@ -3033,6 +3049,7 @@ cameraData	Lens	Lensa
 	Search settings…	Cari pengaturan…
 	No matching settings	Tidak ada pengaturan yang cocok
 	Loading fonts…	Memuat font…
+	Response curve	Kurva respons
 	Tool	Alat
 	Simulate Pressure	Simulasikan Tekanan
 	Stroke Path…	Stroke Path…
@@ -3070,6 +3087,7 @@ curves	Smooth	Haluskan
 	Paint over hair or fur on the image; Alt paints the other mode	Lukis di atas rambut atau bulu pada gambar; Alt melukis dalam mode lainnya
 	Clear Brush Strokes	Hapus Goresan Kuas
 	Show rulers	Tampilkan Penggaris
+	Presentation	Presentasi
 
 # Color Sampler (added with the i18n coverage repair)
 	Click to place · Alt-click or drag off-canvas to remove	Klik untuk menempatkan · Alt-klik atau seret ke luar kanvas untuk menghapus
@@ -3097,6 +3115,7 @@ curves	Smooth	Haluskan
 	Remove after each stroke	Hapus setelah setiap goresan
 	Apply the removal ({key})	Terapkan penghapusan ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Goresan untuk dihapus: {n} (Enter menerapkan, Esc membatalkan)
+	Show home recent files	Tampilkan file terbaru di layar beranda
 	Clear Brush Controls	Hapus Kontrol Kuas
 	Reset All Locked Settings	Atur Ulang Semua Pengaturan Terkunci
 	Copy Texture to Other Tools	Salin Tekstur ke Alat Lain
@@ -3111,6 +3130,8 @@ curves	Smooth	Haluskan
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	{n} tindakan disimpan ke {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	{n} langkah tanpa padanan Photoshop dilewati
 
+	File Naming	Penamaan Berkas
+	Starting serial	Nomor urut awal
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Sisipkan Berhenti…
 	Save Set…	Simpan Set…
@@ -3121,5 +3142,51 @@ curves	Smooth	Haluskan
 	Action playback stopped	Pemutaran tindakan dihentikan
 	Step {step} is waiting for its dialog	Langkah {step} menunggu dialognya
 @plural	{n} action|{n} actions	{n} tindakan
+	Background (Default)	Background (Default)
+	Content-Aware Fill	Isi Content-Aware
+# Batch / Image Processor
+	Include All Subfolders	Sertakan semua subfolder
 	Auto Add/Delete	Tambah/Hapus Otomatis
+
+# Native Windows printing qualification
+	Don't also tick Mirror Image in Print Settings…: the two flips cancel out.	Jangan aktifkan juga Gambar Cermin di Pengaturan Cetak: kedua pembalikan saling meniadakan.
+	Print Settings…	Pengaturan Cetak…
+	Remember to turn off the printer's own colour management in Print Settings…	Ingat untuk menonaktifkan pengelolaan warna milik printer di Pengaturan Cetak…
+	Sent to {printer}	Dikirim ke {printer}
+	set in Print Settings…	diatur di Pengaturan Cetak…
 	ICO is limited to 256 × 256 pixels	ICO dibatasi hingga 256 × 256 piksel
+# Embedded Profile Mismatch: profile names beside the choices, Remember this choice
+	Use the embedded profile ({profile})	Pakai profil tertanam ({profile})
+	Convert to the working space ({profile})	Konversi ke working space ({profile})
+	Remember this choice for future images	Ingat pilihan ini untuk gambar berikutnya
+	Turn the prompt back on with Ask On Mismatch in Edit › Color Settings.	Aktifkan lagi pertanyaan ini lewat Ask On Mismatch di Edit › Pengaturan Warna.
+	Button Mode	Mode tombol
+	Button Mode On	Mode tombol aktif
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Gelapkan Antarmuka
+	Lighten Interface	Cerahkan Antarmuka
+# Bevel & Emboss Technique.
+	Technique	Teknik
+	Chisel Hard	Pahat Keras
+	Chisel Soft	Pahat Lembut
+	Open color-less EXR as ACEScg	Buka EXR tanpa informasi warna sebagai ACEScg
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	Edit Panduan Terpilih
+	Clear Selected Guides	Hapus Panduan Terpilih
+	Delete this set	Hapus set ini
+	New Set…	Set Baru…
+	PhotoCraft Defaults	Bawaan PhotoCraft
+	Save a list of these shortcuts as a web page	Simpan daftar pintasan ini sebagai halaman web
+	Save the changes to this set	Simpan perubahan ke set ini
+	Save these shortcuts as a .kys file	Simpan pintasan ini sebagai file .kys
+	Save these shortcuts as a new set	Simpan pintasan ini sebagai set baru
+	Set deleted.	Set dihapus.
+	Set saved.	Set disimpan.
+	Set:	Set:
+	Summarize…	Ringkas…
+	There are too many sets: delete one first.	Terlalu banyak set: hapus satu terlebih dahulu.
+	set name	nama set
+	{set} (modified)	{set} (diubah)
+	Random	Acak

@@ -463,3 +463,70 @@ fn font_menu_rows_search_both_names_and_sort_by_label() {
     assert_eq!(rows(Some(&labels), "雅黑"), [("Microsoft YaHei".to_string(), "微软雅黑".to_string())]);
     assert!(rows(Some(&labels), "nothing").is_empty());
 }
+
+#[test]
+fn wheel_over_the_closed_font_button_steps_through_the_families() {
+    let mut h = harness();
+    let button = h.query_all_by_role(Role::ComboBox).next().unwrap().rect().center();
+    h.hover_at(button);
+    h.run();
+    let wheel = |h: &mut Harness<'static, State>, y: f32| {
+        h.event(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Line, delta: vec2(0.0, y), phase: egui::TouchPhase::Move, modifiers: Modifiers::NONE });
+        h.run();
+    };
+    wheel(&mut h, -2.0);
+    assert_eq!(h.state().current, "Family 02", "two notches down pick the second next family");
+    assert!(popup_rect(&h).is_none(), "the list stays closed");
+    wheel(&mut h, 1.0);
+    assert_eq!(h.state().current, "Family 01");
+    wheel(&mut h, 5.0);
+    assert_eq!(h.state().current, "Family 00", "stops at the first family");
+}
+
+#[test]
+fn wheel_family_index_clamps_to_the_ends() {
+    assert_eq!(super::wheel_family_index(0, 3, -5.0), Some(2));
+    assert_eq!(super::wheel_family_index(1, 3, 1.0), Some(0));
+    assert_eq!(super::wheel_family_index(1, 3, 0.0), None);
+    assert_eq!(super::wheel_family_index(0, 0, -1.0), None);
+}
+
+/// #5152: in the full app the Properties panel's Character section draws a second font picker
+/// after the options bar; hovering a font in the options bar still previews it on the canvas.
+#[test]
+fn options_bar_hover_previews_with_the_character_picker_also_shown() {
+    use crate::{PhotocraftApp, Services};
+    use photocraft_doc::LayerContent;
+    use serde_json::json;
+
+    let theme = crate::theme::ThemeKind::Pro;
+    let mut h = Harness::builder().with_size(vec2(1600.0, 1000.0)).with_max_steps(64).build_eframe(move |cc| {
+        PhotocraftApp::setup_context(&cc.egui_ctx, theme);
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Services::default());
+        app.ui.theme = theme;
+        app.run("file.new", json!({"width": 200, "height": 100})).unwrap();
+        app.run("type.create", json!({"text": "Sample", "font": "Inter", "size": 18})).unwrap();
+        app.ui.tool = crate::state::Tool::Type;
+        app.sync_views();
+        app
+    });
+    h.run_steps(8);
+    let layer = h.state().session.active().unwrap().active_layer.unwrap();
+    let font = |h: &mut Harness<'static, PhotocraftApp>| {
+        let (shown, _) = crate::canvas::display_doc(h.state_mut(), 0);
+        let LayerContent::Text(t) = &shown.layer(layer).unwrap().content else { panic!("type layer") };
+        t.char_runs()[0].style.font_family.clone()
+    };
+    let pickers: Vec<_> = h.query_all_by_role(Role::ComboBox).filter(|n| n.value().as_deref() == Some("Inter")).collect();
+    assert_eq!(pickers.len(), 2, "options bar and Character section both show the font picker");
+    pickers[0].click();
+    h.run();
+    h.query_all_by_role(Role::TextInput).find(|n| n.is_focused()).expect("search field focused").type_text("JetBrains Mono");
+    h.run();
+    h.get_by_label("JetBrains Mono").hover();
+    h.run();
+    assert_eq!(font(&mut h), "JetBrains Mono");
+    h.query_all_by_role(Role::TextInput).find(|n| n.is_focused()).expect("search field focused").hover();
+    h.run();
+    assert_eq!(font(&mut h), "Inter", "leaving the row restores the committed font");
+}

@@ -14,7 +14,7 @@
 //! The lock beside a section name keeps that section's settings when another preset is picked
 //! (`locks` in the brush, applied by the engine). The Brushes tab lives in [`crate::brushes_tab`].
 
-use egui::{Color32, CornerRadius, RichText, Sense, Stroke, vec2};
+use egui::{Color32, CornerRadius, Sense, Stroke, vec2};
 use photocraft_engine::BrushSettings;
 use photocraft_engine::paint;
 use serde::{Deserialize, Serialize};
@@ -249,7 +249,6 @@ fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSetting
         ui.set_width(150.0);
         ui.spacing_mut().item_spacing.y = 1.0;
         let (br_rect, br_resp) = ui.allocate_exact_size(vec2(150.0, 23.0), Sense::click());
-        br_resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!("Brushes")));
         if br_resp.hovered() {
             ui.painter().rect_filled(br_rect, t.radius_sm, t.hover);
         }
@@ -359,9 +358,8 @@ fn settings_tab(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         widgets::vline(ui, 482.0);
         ui.vertical(|ui| {
             ui.set_width(WIDTH - 190.0);
-            let name = SECTIONS.get(section).map_or("Brush Tip Shape", |entry| entry.0);
-            ui.label(RichText::new(tl!(name)).font(theme::semibold(12.5)).color(t.text));
-            ui.add_space(6.0);
+            // No title above the options (#3477): the selected row in the list names them, as
+            // in Photoshop, and the line is better spent on the options.
             let on = section_flag(&mut b, section).is_none_or(|f| *f);
             egui::ScrollArea::vertical().id_salt(("brush-section", section)).max_height(450.0).auto_shrink([false, false]).show(ui, |ui| {
                 ui.set_width(WIDTH - 204.0);

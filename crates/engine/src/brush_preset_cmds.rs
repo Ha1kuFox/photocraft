@@ -119,6 +119,7 @@ fn rename(s: &mut Session, p: &Value) -> Result<Value> {
         pr.builtin = false;
         if was_current {
             s.tools.current_preset = Some(new.clone());
+            s.tools.brush_changed();
         }
         s.brush_presets_changed();
     }
@@ -433,6 +434,7 @@ fn delete_group(s: &mut Session, p: &Value) -> Result<Value> {
     s.tools.presets.retain(|x| !in_folder(x, &g, &f));
     if s.tools.current_preset.as_ref().is_some_and(|c| !s.tools.presets.iter().any(|x| x.name.eq_ignore_ascii_case(c))) {
         s.tools.current_preset = None;
+        s.tools.brush_changed();
     }
     s.brush_presets_changed();
     Ok(json!({ "deleted": before - s.tools.presets.len(), "count": s.tools.presets.len() }))

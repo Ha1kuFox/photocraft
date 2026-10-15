@@ -584,10 +584,48 @@ pub fn face_count(bytes: &[u8]) -> usize {
     }
 }
 
+// CamelCase style suffix of a name without a hyphen (`GmarketSansBold`). Only a capitalised word
+// counts ("Daylight" keeps its "light"), and one after a vendor tag stays in a legacy family name
+// (`ArialRoundedMTBold` is the family "Arial Rounded MT Bold").
+fn split_trailing_style(ps: &str) -> (&str, &str) {
+    let base = ps.trim_end_matches("MT").trim_end_matches("PS");
+    let mut family = base;
+    for suffix in ["Italic", "Oblique"] {
+        if let Some(rest) = family.strip_suffix(suffix).filter(|s| !s.is_empty()) {
+            family = rest;
+            break;
+        }
+    }
+    for suffix in [
+        "ExtraLight",
+        "UltraLight",
+        "ExtraBold",
+        "UltraBold",
+        "SemiBold",
+        "DemiBold",
+        "Hairline",
+        "Regular",
+        "Medium",
+        "Normal",
+        "Heavy",
+        "Black",
+        "Light",
+        "Thin",
+        "Bold",
+        "Demi",
+    ] {
+        if let Some(rest) = family.strip_suffix(suffix).filter(|s| !s.is_empty()) {
+            family = rest;
+            break;
+        }
+    }
+    if family.len() < base.len() && !family.ends_with("MT") { (family, ps.get(family.len()..).unwrap_or("")) } else { (ps, "") }
+}
+
 /// Heuristic PostScript-name split: `MyriadPro-BoldIt` → ("Myriad Pro", 700, italic).
 pub fn guess_from_postscript(ps: &str) -> ResolvedFont {
     // A vendor or family name may contain hyphens; start with the final face suffix.
-    let (mut pro, mut style) = ps.rsplit_once('-').unwrap_or((ps, ""));
+    let (mut pro, mut style) = ps.rsplit_once('-').unwrap_or_else(|| split_trailing_style(ps));
     // Keep compound style suffixes the old heuristic understood, such as Bold-It.
     // Regular alone must not consume a family component named Bold or Black.
     if matches!(style.to_ascii_lowercase().as_str(), "it" | "italic" | "oblique")

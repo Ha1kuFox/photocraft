@@ -230,6 +230,7 @@ pub(crate) fn doc_m(d: &Document, sink: &mut dyn Sink) -> DocM {
         layers: d.layers.iter().map(|l| layer_m(l, sink)).collect(),
         channels: d.channels.iter().map(|c| channel_m(c, sink)).collect(),
         guides: d.guides.clone(),
+        ruler_origin: d.ruler_origin,
         selection: d.selection.as_ref().map(|s| surface_m(s, sink)),
         metadata: MetadataM {
             xmp: d.metadata.xmp.clone(),
@@ -616,6 +617,15 @@ impl Loader<'_> {
                 }
             }
         }
+        // Variable targets follow their layers through id remapping; a dangling one keeps a
+        // non-colliding placeholder so it stays a missing-layer skip rather than driving an
+        // unrelated layer (#4969). With preserved ids the map is the identity and defs stay as saved.
+        let mut variables = m.variables.clone();
+        if !self.preserve_ids {
+            for vd in &mut variables.defs {
+                vd.layer = self.id_map.get(&vd.layer.0).copied().unwrap_or(LayerId(u64::MAX - vd.layer.0.min(u64::MAX / 2)));
+            }
+        }
         let id = if self.preserve_ids { DocId(m.id) } else { DocId::fresh() };
         Ok(Document {
             id,
@@ -628,6 +638,7 @@ impl Loader<'_> {
             layers,
             channels,
             guides: m.guides.clone(),
+            ruler_origin: m.ruler_origin,
             selection: self.opt_surface(&m.selection)?,
             metadata: md,
             global_light: m.global_light,
@@ -639,7 +650,7 @@ impl Loader<'_> {
             patterns,
             color_table: m.color_table.clone(),
             duotone: m.duotone.clone(),
-            variables: m.variables.clone(),
+            variables,
             timeline: m.timeline.clone(),
             file_encoding: m.file_encoding,
             layer_comps,

@@ -151,14 +151,14 @@ fn surface_of(doc: &Document, id: LayerId, mask: bool) -> Option<&Surface> {
 
 /// Blend `after` back towards `before` over `area`: `before + opacity × (B(before, after) − before)`
 /// with blend mode `mode` (premultiplied, so alpha changes fade too).
-pub fn fade_surface(before: &Surface, after: &mut Surface, area: Rect, mode: BlendMode, opacity: f32) {
+pub fn fade_surface(before: &Surface, after: &mut Surface, area: Rect, mode: BlendMode, opacity: f32) -> Result<()> {
     let fmt = after.format();
     let n = fmt.channels();
     if area.is_empty() || n == 0 {
-        return;
+        return Ok(());
     }
-    let b = before.read_region(area);
-    let mut a = after.read_region(area);
+    let b = crate::allocation::read_region(before, area, "fading pixels")?;
+    let mut a = crate::allocation::read_region(after, area, "fading pixels")?;
     let k = opacity.clamp(0.0, 1.0);
     let lerp_premul = |pb: &[f32], pa: &[f32], out: &mut [f32], alpha: bool| {
         let m = out.len();
@@ -176,7 +176,7 @@ pub fn fade_surface(before: &Surface, after: &mut Surface, area: Rect, mode: Ble
         }
         out[m - 1] = ao;
     };
-    let mut tmp = vec![0.0f32; n];
+    let mut tmp = crate::allocation::filled(n, 0.0f32, "fading pixels")?;
     for (pa, pb) in a.chunks_exact_mut(n).zip(b.chunks_exact(n)) {
         if mode == BlendMode::Normal || n == 1 {
             lerp_premul(pb, pa, &mut tmp, fmt.alpha);
@@ -192,7 +192,8 @@ pub fn fade_surface(before: &Surface, after: &mut Surface, area: Rect, mode: Ble
             pa.copy_from_slice(&enc[..n]);
         }
     }
-    after.write_region(area, &a);
+    after.try_write_region(area, &a)?;
+    Ok(())
 }
 
 fn fade(s: &mut Session, p: &Value) -> Result<Value> {
@@ -212,7 +213,7 @@ fn fade(s: &mut Session, p: &Value) -> Result<Value> {
     s.edit(&label, |doc, _| {
         let l = doc.layer_mut(src.layer).ok_or(EngineError::NoLayer(src.layer))?;
         let surf = if src.mask { l.mask.as_mut().map(|m| &mut m.surface) } else { l.surface_mut() }.ok_or(EngineError::NoLayer(src.layer))?;
-        fade_surface(&before, surf, area, mode, opacity);
+        fade_surface(&before, surf, area, mode, opacity)?;
         surf.prune();
         Ok(())
     })?;
@@ -223,7 +224,13 @@ fn fade(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn history_bytes(s: &Session, all: bool) -> usize {
     let docs: Vec<&crate::DocState> = if all { s.documents().iter().collect() } else { s.active().into_iter().collect() };
-    docs.iter().map(|d| d.history.unique_bytes(&d.doc)).sum()
+    // Purge keeps the snapshots, so the tiles they share with the states aren't freed.
+    docs.iter()
+        .map(|d| {
+            let snaps: Vec<&photocraft_doc::Document> = d.snapshots.iter().map(|s| &*s.doc).collect();
+            d.history.unique_bytes_besides(&d.doc, &snaps)
+        })
+        .sum()
 }
 
 fn clip_bytes(s: &Session) -> usize {
@@ -273,6 +280,11 @@ fn purge(s: &mut Session, what: &str) -> Result<Value> {
         if stages > 0 {
             freed = freed.saturating_add(stages);
             items.push("smart filter cache");
+        }
+        let strokes = photocraft_compose::shape_split::purge_cache();
+        if strokes > 0 {
+            freed = freed.saturating_add(strokes);
+            items.push("shape stroke cache");
         }
     }
     s.edit_state.fade = None;

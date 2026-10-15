@@ -243,7 +243,7 @@ fn smart_filter_commands_check_an_explicit_layer_target() {
     assert_eq!(active(&s), curves, "the active layer stays");
     // A target that isn't a smart object with filters is still refused, and the active layer stays.
     assert!(matches!(s.execute("layer.smartFilter.setParams", json!({"layer": curves, "params": {}})), Err(EngineError::Disabled(..))));
-    assert!(s.execute("layer.smartFilter.setParams", json!({"layer": 999_999, "params": {}})).is_err());
+    assert!(s.execute("layer.smartFilter.setParams", json!({"layer": u64::MAX, "params": {}})).is_err());
     assert_eq!(active(&s), curves);
 }
 
@@ -529,8 +529,18 @@ fn export_replace_and_linked_contents() {
     paint(&mut s);
     convert(&mut s);
     let out = dir.join("contents.pcraft");
-    s.execute("layer.smartObjects.exportContents", json!({"path": out.to_str().unwrap()})).unwrap();
+    let r = s.execute("layer.smartObjects.exportContents", json!({"path": out.to_str().unwrap()})).unwrap();
     assert!(photocraft_format::is_pcraft(&std::fs::read(&out).unwrap()));
+    assert_eq!(r["converted"], false);
+    // Another extension exports the contents in that format.
+    for (ext, magic) in [("png", &b"\x89PNG"[..]), ("jpeg", &b"\xFF\xD8\xFF"[..]), ("psd", &b"8BPS"[..])] {
+        let other = dir.join(format!("contents.{ext}"));
+        let r = s.execute("layer.smartObjects.exportContents", json!({"path": other.to_str().unwrap()})).unwrap();
+        assert_eq!(r["converted"], true, "{ext}");
+        assert!(std::fs::read(&other).unwrap().starts_with(magic), "{ext}");
+    }
+    let bad = dir.join("contents.nope");
+    assert!(s.execute("layer.smartObjects.exportContents", json!({"path": bad.to_str().unwrap()})).is_err());
     // Replace with a flat PNG.
     let png_doc = Document::with_background(
         "p",
@@ -1052,6 +1062,10 @@ fn inspect_reports_the_smart_source() {
     let source = |s: &Session| crate::inspect::layer(s.active().unwrap().doc.layer(s.active().unwrap().active_layer.unwrap()).unwrap())["smartSource"].clone();
     let front = source(&s);
     assert_eq!(front, json!({"kind": "linked", "path": "uuid-1"}));
+    // The document's info knows the file is embedded in the PSD (a `liFD` item) and says so,
+    // with its file name; the uuid stays its key.
+    let info = crate::inspect::document(s.active().unwrap());
+    assert_eq!(info["layers"][0]["smartSource"], json!({"kind": "embedded", "fileName": "in.png", "uuid": "uuid-1"}));
     // A duplicate shares the file; New Smart Object via Copy gets its own.
     s.execute("layer.duplicate", json!({})).unwrap();
     assert_eq!(source(&s), front, "a duplicate shares its source");

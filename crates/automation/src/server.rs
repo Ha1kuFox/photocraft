@@ -205,7 +205,7 @@ pub struct SelectParams {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListParams {
-    /// Only commands whose id or label contains this text (case-insensitive).
+    /// Only commands whose id, label or keywords contain this text (case-insensitive).
     #[serde(default)]
     pub filter: Option<String>,
     /// Only commands that can run right now.
@@ -320,11 +320,15 @@ pub struct UiSetParams {
     /// grid, diagonal, triangle, goldenRatio, goldenSpiral), cropOverlayShow (auto, always, never),
     /// cropOverlayOrientation (0..3), cropShield (an object patching show_cropped_area, enabled,
     /// color ("matchCanvas" or "custom"), custom_color ([r, g, b]), opacity (0..100),
-    /// auto_adjust, classic_mode and auto_center_preview), shapeStroke (an object patching width, align, cap, join, miterLimit,
+    /// auto_adjust, classic_mode and auto_center_preview), cropFill (background or contentAware,
+    /// the Crop tool's Fill), shapeStroke (an object patching width, align, cap, join, miterLimit,
     /// dashes, dashOffset and opacity; null disables the stroke). Shape stroke fields use
     /// `shape.edit` names and units; colour comes from `tools.setColors`. camTransformOnDrop (bool,
     /// the Content-Aware Move tool's Transform On Drop). tileGrid (bool, a developer overlay of the
-    /// active layer's storage tiles). Other fields are an error.
+    /// active layer's storage tiles). layerFilter (an object patching the Layers panel filter:
+    /// by: kind/name/mode; kinds: a list of pixel/adjustment/type/shape/smart; name: a string;
+    /// mode: a blend mode name such as Multiply or Pass Through). Omitted filter fields keep
+    /// their current values. Other fields are an error.
     pub fields: Value,
 }
 
@@ -796,7 +800,8 @@ impl PhotocraftMcp {
         }
     }
 
-    #[tool(description = "List engine commands: id, label, menu path, shortcut, parameter doc, enabled now. \
+    #[tool(description = "List engine commands. Returns a JSON array (no wrapper object) of {id, label, menu: [path], \
+        shortcut: string|null, params: doc string, enabled: bool, disabledReason: string|null, needsDocument: bool}. \
         `disabledReason` says why a command is off (null when enabled); `needsDocument` is true when it is off because no \
         document is open: create or open one first (doc_new, doc_open).")]
     async fn command_list(&self, Parameters(p): Parameters<ListParams>) -> Result<CallToolResult, McpError> {
@@ -820,9 +825,8 @@ impl PhotocraftMcp {
             .unwrap_or_else(|| all.get("commands").and_then(Value::as_array).cloned().unwrap_or_default())
             .into_iter()
             .filter(|c| {
-                let hay =
-                    format!("{} {}", c.get("id").and_then(Value::as_str).unwrap_or(""), c.get("label").and_then(Value::as_str).unwrap_or("")).to_lowercase();
-                needle.as_ref().is_none_or(|n| hay.contains(n)) && (!enabled_only || c.get("enabled").and_then(Value::as_bool).unwrap_or(true))
+                needle.as_ref().is_none_or(|n| photocraft_engine::commands::list_entry_matches(c, n))
+                    && (!enabled_only || c.get("enabled").and_then(Value::as_bool).unwrap_or(true))
             })
             .collect();
         Ok(ok_json(&Value::Array(items)))

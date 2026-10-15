@@ -527,38 +527,69 @@ fn on_event(app: &mut PhotocraftApp, ctx: &egui::Context, e: JobEvent) {
 /// What [`crate::PhotocraftApp::open_bytes`] does after decoding, for a background open's result
 /// (`{document, warnings, color}`).
 fn finish_open(app: &mut PhotocraftApp, name: &str, path: Option<&str>, v: &Value, slot: Option<usize>) -> Result<(), String> {
+    let warnings: Vec<String> =
+        v.get("warnings").and_then(Value::as_array).map(|a| a.iter().filter_map(|w| w.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    let held = |doc, read_only, question, policy_applied| crate::open_prompt::Held {
+        doc,
+        read_only,
+        name: name.to_string(),
+        path: path.map(str::to_string),
+        warnings: warnings.clone(),
+        bytes: None,
+        slot,
+        question,
+        policy_applied,
+    };
+    // Held back for the profile prompt (Ask When Opening).
+    if let Some(id) = v.get("held").and_then(Value::as_u64) {
+        let (doc, read_only) = app.session.take_held_open(id).ok_or("the open job's document is gone")?;
+        crate::open_prompt::arrive(app, held(doc, read_only, v.get("color").cloned(), false));
+        return Ok(());
+    }
     let mut index = v.get("document").and_then(Value::as_u64).ok_or("the open job returned no document")? as usize;
+    // An earlier file is waiting on its prompt: this one opens after it, in order.
+    if crate::open_prompt::waiting(app)
+        && let Some(st) = app.session.close(index)
+    {
+        let read_only = st.source_read_only;
+        let doc = Arc::try_unwrap(st.doc).unwrap_or_else(|d| (*d).clone());
+        crate::open_prompt::arrive(app, held(doc, read_only, None, true));
+        return Ok(());
+    }
     if let Some(slot) = slot
         && let Ok(moved) = app.run("document.move", json!({"document": index, "to": slot}))
     {
         index = moved.get("document").and_then(Value::as_u64).map_or(index, |i| i as usize);
     }
-    let warnings: Vec<String> =
-        v.get("warnings").and_then(Value::as_array).map(|a| a.iter().filter_map(|w| w.as_str().map(str::to_string)).collect()).unwrap_or_default();
     app.session.set_active(index);
+    after_open(app, name, path, &warnings, None);
+    Ok(())
+}
+
+/// What every open does once its document is the active one: remember where it came from, say
+/// so, show the import warnings (a raw opens in Camera Raw first, developed from `path` or
+/// `bytes`) and fire the "Open Document" script events.
+pub(crate) fn after_open(app: &mut PhotocraftApp, name: &str, path: Option<&str>, warnings: &[String], bytes: Option<&[u8]>) {
     if let Some(p) = path {
         app.opened_from(p);
     }
     app.sync_views();
-    let warnings = crate::file_open::with_missing_fonts(app, warnings);
-    app.ui.status = crate::i18n::fmt(tl!("Opened {name}"), &[("name", name)]);
+    // Fonts the document's type uses that aren't installed join the import warnings (#4559).
+    let warnings = crate::file_open::with_missing_fonts(app, warnings.to_vec());
+    let warnings = warnings.as_slice();
+    let opened = crate::i18n::fmt(tl!("Opened {name}"), &[("name", name)]);
+    app.ui.status = opened.clone();
     app.ui.status_error = false;
     // A raw opens in Camera Raw first; the dialog says how it was developed.
-    if crate::camera_raw_ui::wants_open_dialog(app, &warnings) {
-        crate::camera_raw_ui::queue_open_dialog(app, name, path, None);
-        notices::io_warnings(app, &crate::i18n::fmt(tl!("Opened {name}"), &[("name", name)]), &crate::camera_raw_ui::without_develop_note(&warnings));
+    if crate::camera_raw_ui::wants_open_dialog(app, warnings) {
+        crate::camera_raw_ui::queue_open_dialog(app, name, path, bytes);
+        notices::io_warnings(app, &opened, &crate::camera_raw_ui::without_develop_note(warnings));
     } else {
-        notices::io_warnings(app, &crate::i18n::fmt(tl!("Opened {name}"), &[("name", name)]), &warnings);
+        notices::io_warnings(app, &opened, warnings);
     }
     // Script events bound to "Open Document".
     photocraft_engine::automate_cmds::document_opened(&mut app.session);
     app.sync_views();
-    let color = v.get("color").cloned().unwrap_or(Value::Null);
-    let ask = color.get("ask").and_then(Value::as_bool) == Some(true);
-    if ask && (color.get("mismatch").and_then(Value::as_bool) == Some(true) || color.get("missing").is_some()) {
-        crate::prefs_ui::open_mismatch(app, &color);
-    }
-    Ok(())
 }
 
 // ------------------------------------------------------------------------------------- drawing

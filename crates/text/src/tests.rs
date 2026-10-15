@@ -1991,3 +1991,20 @@ fn type_on_a_path_follows_the_curve() {
     dot.shape = TextShape::Path { path: Subpath::polyline(&[(5.0, 5.0), (5.0, 5.0)]), start: 0.0, flip: false };
     assert_eq!(ink(&mut eng, &dot), flat);
 }
+
+#[test]
+fn hyphenless_postscript_names_split_trailing_styles() {
+    for (ps, family, weight, italic) in [
+        ("GmarketSansBold", "Gmarket Sans", 700, false),
+        ("NanumGothicBold", "Nanum Gothic", 700, false),
+        ("GmarketSansTTFBold", "Gmarket Sans TTF", 700, false),
+        ("ExampleSansSemiBoldItalic", "Example Sans", 600, true),
+        ("ExampleSansExtraLight", "Example Sans", 200, false),
+        // A style word after a vendor tag belongs to a legacy family name; lowercase is no style.
+        ("ArialRoundedMTBold", "Arial Rounded MT Bold", 400, false),
+        ("Daylight", "Daylight", 400, false),
+    ] {
+        let r = fonts::guess_from_postscript(ps);
+        assert_eq!((r.family.as_str(), r.weight, r.italic), (family, weight, italic), "{ps}");
+    }
+}

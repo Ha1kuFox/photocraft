@@ -162,3 +162,70 @@ fn a_camera_raw_filter_copies_and_its_copy_opens_on_the_target() {
     let dialog = h.state().camera_raw.as_ref().expect("Camera Raw opened");
     assert_eq!(dialog.layer, LayerId(b));
 }
+
+/// Dragging a filter up or down its own stack reorders it (Photoshop), which changes the result:
+/// the bottom filter is applied first (`smart_cmds::tests::filter_stack_order_blend_disable_and_clear`). A drop on the upper half of a row lands above it, on the
+/// lower half below it, on the Smart Filters row on top; the moved filter stays selected.
+#[test]
+fn dragging_a_filter_up_or_down_its_stack_reorders_it() {
+    let (mut h, a, _, _) = panel();
+    let (blur, offset) = ("filter.blur.gaussianBlur", "filter.other.offset");
+    let half = |p: Pos2, up: bool| p + egui::vec2(0.0, if up { -6.0 } else { 6.0 });
+    // Gaussian Blur (bottom) onto the upper half of Offset's row: blur now on top.
+    let (from, to) = (at(&h, "Gaussian Blur"), at(&h, "Offset"));
+    drag(&mut h, from, half(to, true), Modifiers::NONE);
+    assert_eq!(filters(&h, a), [offset, blur]);
+    assert!(selected(&h, "Gaussian Blur"), "the moved filter stays selected");
+    assert!(!h.state().ui.status_error, "{}", h.state().ui.status);
+    // Its lower half: back under it.
+    let (from, to) = (at(&h, "Gaussian Blur"), at(&h, "Offset"));
+    drag(&mut h, from, half(to, false), Modifiers::NONE);
+    assert_eq!(filters(&h, a), [blur, offset]);
+    // The Smart Filters row: on top again.
+    let (from, to) = (at(&h, "Gaussian Blur"), at(&h, "Smart Filters"));
+    drag(&mut h, from, to, Modifiers::NONE);
+    assert_eq!(filters(&h, a), [offset, blur]);
+    // Each drag is one undo step.
+    h.state_mut().run("edit.undo", json!({})).unwrap();
+    h.run_steps(4);
+    assert_eq!(filters(&h, a), [blur, offset]);
+}
+
+fn click_at(h: &mut egui_kittest::Harness<'static, PhotocraftApp>, p: Pos2) {
+    h.hover_at(p);
+    h.run_steps(1);
+    h.drag_at(p);
+    h.run_steps(1);
+    h.drop_at(p);
+    h.run_steps(4);
+}
+
+/// #4751: with a filter's row selected, clicking Delete removes that filter, not the smart object.
+#[test]
+fn clicking_delete_removes_the_selected_filter() {
+    let (mut h, a, _, _) = panel();
+    let blur = at(&h, "Gaussian Blur");
+    click_at(&mut h, blur);
+    let trash = at(&h, "Delete layer");
+    click_at(&mut h, trash);
+    assert_eq!(filters(&h, a), ["filter.other.offset"]);
+    assert_eq!(h.state().session.active().unwrap().doc.layers.len(), 4, "no layer was deleted");
+    // The deleted row's selection doesn't carry over to Offset, now at its index.
+    click_at(&mut h, trash);
+    assert_eq!(filters(&h, a), ["filter.other.offset"]);
+}
+
+/// Clicking the smart object's own row leaves its filters: Delete then deletes the layer as usual.
+#[test]
+fn clicking_the_smart_object_row_deselects_its_filter() {
+    let (mut h, a, _, _) = panel();
+    let offset = at(&h, "Offset");
+    click_at(&mut h, offset);
+    let row = at(&h, "Smart A");
+    click_at(&mut h, row);
+    assert_eq!(h.state().session.active().unwrap().active_layer, Some(LayerId(a)));
+    assert!(!selected(&h, "Offset"));
+    let trash = at(&h, "Delete layer");
+    click_at(&mut h, trash);
+    assert_eq!(filters(&h, a).len(), 2, "the filters stay");
+}

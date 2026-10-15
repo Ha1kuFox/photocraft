@@ -83,11 +83,27 @@ printf '[Desktop Entry]\nType=Application\nName=PhotoCraft\nExec="%s" %%F\nIcon=
 [ -f "$XDG_DATA_HOME/icons/hicolor/256x256/apps/$APP_ID.png" ] || fail "icons missing with external integrator"
 rm -f "$ext_desktop"
 
-# 7. DESKTOPINTEGRATION set by an external integrator skips creating a second .desktop entry.
+# 7. AppImageLauncher exports DESKTOPINTEGRATION even after X-AppImage-Integrate=false
+#    made it skip the AppImage. That is not an existing launcher, so AppRun still
+#    writes its own entry and a later launch must not delete it (#5534).
 rm -rf "$XDG_DATA_HOME"
 DESKTOPINTEGRATION=AppImageLauncher "$APPDIR/AppRun" >/dev/null || fail "DESKTOPINTEGRATION launch exited non-zero"
-[ ! -e "$DESKTOP" ] || fail "DESKTOPINTEGRATION still wrote duplicate desktop entry"
+[ -f "$DESKTOP" ] || fail "DESKTOPINTEGRATION suppressed the desktop entry (#5534)"
+grep -Fxq "Exec=\"$(readlink -f "$APPIMAGE")\" %F" "$DESKTOP" || fail "Exec missing under DESKTOPINTEGRATION"
+grep -Fxq "X-AppImage-Integrate=false" "$DESKTOP" || fail "X-AppImage-Integrate=false missing under DESKTOPINTEGRATION"
 [ -f "$XDG_DATA_HOME/icons/hicolor/256x256/apps/$APP_ID.png" ] || fail "icons not installed under DESKTOPINTEGRATION"
+before="$(stat -c %i "$DESKTOP")"
+DESKTOPINTEGRATION=AppImageLauncher "$APPDIR/AppRun" >/dev/null || fail "second DESKTOPINTEGRATION launch exited non-zero"
+[ -f "$DESKTOP" ] || fail "DESKTOPINTEGRATION removed the desktop entry on a later launch"
+[ "$before" = "$(stat -c %i "$DESKTOP")" ] || fail "desktop entry rewritten under DESKTOPINTEGRATION although unchanged"
+# A real integrator entry still wins, including when DESKTOPINTEGRATION is also set (#3623).
+ext_desktop="$XDG_DATA_HOME/applications/appimagekit-photocraft.desktop"
+printf '[Desktop Entry]\nType=Application\nName=PhotoCraft\nExec="%s" %%F\nIcon=%s\n' "$(readlink -f "$APPIMAGE")" "$APP_ID" >"$ext_desktop"
+DESKTOPINTEGRATION=AppImageLauncher "$APPDIR/AppRun" >/dev/null || fail "launch with integrator entry and DESKTOPINTEGRATION exited non-zero"
+[ ! -e "$DESKTOP" ] || fail "duplicate desktop entry kept when an integrator entry exists"
+[ -f "$ext_desktop" ] || fail "external integrator desktop entry removed"
+[ -f "$XDG_DATA_HOME/icons/hicolor/256x256/apps/$APP_ID.png" ] || fail "icons missing when DESKTOPINTEGRATION and an integrator entry coexist"
+rm -f "$ext_desktop"
 
 # 8. Opt-out installs nothing.
 rm -rf "$XDG_DATA_HOME"

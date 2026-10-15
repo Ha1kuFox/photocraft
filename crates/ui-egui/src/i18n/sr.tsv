@@ -367,6 +367,7 @@
 	Update Modified Content	Ažuriraj izmenjeni sadržaj
 	Update All Modified Content	Ažuriraj sav izmenjeni sadržaj
 	Stack Mode	Režim steka
+	Choose Stack Mode:	Izaberite režim steka:
 	Entropy	Entropija
 	Kurtosis	Kurtozis
 	Maximum	Maksimum
@@ -532,6 +533,11 @@
 	Blur	Zamućenje
 	Blur Gallery	Galerija zamućenja
 	Field Blur…	Zamućenje polja…
+	No pin selected	Nijedna čioda nije izabrana
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Kliknite na sliku da dodate čiodu; prevucite čiodu da je pomerite ili njen prsten da promenite zamućenje. Delete uklanja izabranu čiodu.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Prevucite ručke na obrisu da promenite veličinu i rotirate ga, kvadrat da zaoblite uglove, a tačke unutra da odredite gde zamućenje počinje.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Prevucite čiodu da pomerite traku ili njen prsten da promenite zamućenje. Prevucite pune linije da proširite oštru traku, isprekidane linije da podesite prelaz, a tačke da je rotirate.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Prevucite ručke na obrisu da promenite veličinu i rotirate ga; prsten određuje ugao zamućenja.
 	Iris Blur…	Iris zamućenje…
 	Tilt-Shift…	Tilt-shift…
 	Path Blur…	Zamućenje duž putanje…
@@ -852,6 +858,7 @@
 	Background	Pozadina
 	Background Color	Boja pozadine
 	Background Contents	Sadržaj pozadine
+	Custom background color	Prilagođena boja pozadine
 	Balance	Balans
 	Baseline	Osnovna linija
 	Baseline shift	Pomak osnovne linije
@@ -952,7 +959,6 @@
 	Contiguous	Susedno
 	Contrast	Kontrast
 	Control:	Kontrola:
-	Convert document's colors to the working space	Pretvori boje dokumenta u radni prostor
 	Convert to sRGB	Pretvori u sRGB
 	Copies	Primerci
 	Copper	Bakar
@@ -1007,6 +1013,7 @@
 	Delete Group	Obriši grupu
 	Delete Layer Mask	Obriši masku sloja
 	Delete Layers	Obriši slojeve
+	Add Shortcut	Dodaj prečicu
 	Delete Shortcut	Obriši prečicu
 	Delete Timeline	Obriši vremensku liniju
 	Delete Tool Preset	Obriši šablon alatke
@@ -1531,7 +1538,6 @@
 	Use Default	Koristi podrazumevano
 	Use Legacy	Koristi staro
 	Use Measurement Scale	Koristi razmeru merenja
-	Use the embedded profile (instead of the working space)	Koristi ugrađeni profil (umesto radnog prostora)
 	Variables bind a layer's visibility, text or pixels to a named data slot.	Promenljive vezuju vidljivost, tekst ili piksele sloja za imenovano polje podataka.
 	Vertical scale	Vertikalna razmera
 	Vibrance	Živost
@@ -1849,6 +1855,8 @@
 	Camera Raw Defaults	Podrazumevana Camera Raw podešavanja
 	Canvas border	Ivica platna
 	Show canvas dots	Prikaži tačke na platnu
+	Clip thumbnails to layer bounds	Iseci sličice prema granicama sloja
+	Clip Thumbnails to Layer Bounds	Iseci sličice prema granicama sloja
 	Canvas color	Boja platna
 	Canvas custom color	Prilagođena boja platna
 	Color picker	Birač boja
@@ -2142,6 +2150,9 @@
 	No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.	Nema putanje od koje bi se napravila selekcija: nacrtajte je alatkom pero ili je izaberite u panelu Putanje.
 	Cancel opening	Otkaži otvaranje
 	Cancelled opening {name}	Otkazano otvaranje: {name}
+	The document “{name}” does not have an embedded {mode} profile.	Dokument „{name}“ nema ugrađeni {mode} profil.
+	The document “{name}” has an embedded color profile that does not match the current {mode} working space.	Dokument „{name}“ ima ugrađeni profil boja koji se ne slaže sa trenutnim {mode} radnim prostorom.
+	Working: {working}	Radni prostor: {working}
 	Developing {name}	Razvijanje: {name}
 	Cancelled {label}	Otkazano: {label}
 	Esc to cancel	Esc za otkazivanje
@@ -2898,7 +2909,10 @@ fontWeight	Italic	Kurziv
 	Color Picker (Layer Style Color)	Birač boja (boja stila sloja)
 	Auto Hide Notifications	Automatski sakrij obaveštenja
 	Notification Duration (seconds)	Trajanje obaveštenja (sekunde)
+	Bundle Arrow-Key Nudges	Objedini pomeranja strelicama
+	Nudge Bundle Pause (ms)	Pauza za objedinjavanje pomeranja (ms)
 	Appearance Mode	Režim izgleda
+	Presentation	Prikaz
 	Dark Theme	Tamna tema
 	Light Theme	Svetla tema
 	Pro Medium	Pro srednja
@@ -3000,6 +3014,7 @@ cameraData	Lens	Objektiv
 	Create a new rectangular frame	Napravi novi pravougaoni okvir
 	Create a new elliptical frame	Napravi novi eliptični okvir
 	Include in playback	Uključi u reprodukciju
+	Include All Subfolders	Uključi sve podfascikle
 	Perspective Crop Tool	Alatka za perspektivno opsecanje
 	Show Grid	Prikaži mrežu
 	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	Prevucite okvir ili kliknite četiri ugla · prevucite uglove na ivice iskošenog oblika · {commit} potvrđuje · Esc otkazuje
@@ -3730,6 +3745,7 @@ layerLabel	No Color	Bez boje
 	Color Settings	Podešavanja boja
 	Color Table	Tabela boja
 	Conditional Mode Change	Uslovna promena režima
+	Background (Default)	Pozadina (podrazumevano)
 	Content-Aware Fill	Popuna prema sadržaju
 	Convert to Linked	Pretvori u povezani
 	Convert to Profile	Pretvori u profil
@@ -4200,9 +4216,17 @@ shape	Appearance	Izgled
 	Choose a gradient file (.grd).	Izaberite datoteku gradijenta (.grd).
 	Auto Add/Delete	Automatsko dodavanje/brisanje
 
+# Native Windows printing qualification
+	Don't also tick Mirror Image in Print Settings…: the two flips cancel out.	Nemojte uključiti i ogledalsku sliku u podešavanjima štampanja: dva preslikavanja se poništavaju.
+	Print Settings…	Podešavanja štampanja…
+	Remember to turn off the printer's own colour management in Print Settings…	Ne zaboravite da isključite upravljanje bojama samog štampača u podešavanjima štampanja…
+	Sent to {printer}	Poslato na {printer}
+	set in Print Settings…	podešava se u podešavanjima štampanja…
 # Custom print paper (#3820)
 	Paper Width	Širina papira
 	Paper Height	Visina papira
+
+# ICO dimensions
 	ICO is limited to 256 × 256 pixels	ICO je ograničen na 256 × 256 piksela
 
 # Channel Options and New Spot Channel (#3761)
@@ -4210,3 +4234,40 @@ shape	Appearance	Izgled
 	Color Indicates:	Boja označava:
 	Ink Characteristics	Karakteristike mastila
 	Solidity:	Punoća:
+	Redrawing	Ponovno iscrtavanje
+	Response curve	Kriva odziva
+# Embedded Profile Mismatch: profile names beside the choices, Remember this choice
+	Use the embedded profile ({profile})	Koristi ugrađeni profil ({profile})
+	Convert to the working space ({profile})	Pretvori u radni prostor ({profile})
+	Remember this choice for future images	Zapamti ovaj izbor za buduće slike
+	Turn the prompt back on with Ask On Mismatch in Edit › Color Settings.	Pitanje ponovo uključite opcijom Ask On Mismatch u Uređivanje › Podešavanja boja.
+	Button Mode	Režim dugmadi
+	Button Mode On	Režim dugmadi uključen
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Zatamni interfejs
+	Lighten Interface	Posvetli interfejs
+# Bevel & Emboss Technique.
+	Technique	Tehnika
+	Chisel Hard	Tvrdo klesanje
+	Chisel Soft	Meko klesanje
+	Open color-less EXR as ACEScg	Otvori EXR bez podatka o bojama kao ACEScg
+	Show home recent files	Prikaži nedavne datoteke na početnom ekranu
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	Uredi izabrane vodilje
+	Clear Selected Guides	Ukloni izabrane vodilje
+	Delete this set	Obriši ovaj skup
+	New Set…	Novi skup…
+	PhotoCraft Defaults	Podrazumevano za PhotoCraft
+	Save a list of these shortcuts as a web page	Sačuvaj listu ovih prečica kao veb stranicu
+	Save the changes to this set	Sačuvaj izmene u ovom skupu
+	Save these shortcuts as a .kys file	Sačuvaj ove prečice kao .kys datoteku
+	Save these shortcuts as a new set	Sačuvaj ove prečice kao novi skup
+	Set deleted.	Skup je obrisan.
+	Set saved.	Skup je sačuvan.
+	Set:	Skup:
+	Summarize…	Rezime…
+	There are too many sets: delete one first.	Previše skupova: prvo obrišite jedan.
+	set name	ime skupa
+	{set} (modified)	{set} (izmenjen)

@@ -377,6 +377,7 @@
 	Update Modified Content	Mettre à jour le contenu modifié
 	Update All Modified Content	Mettre à jour tout le contenu modifié
 	Stack Mode	Mode de pile
+	Choose Stack Mode:	Choisir le mode de pile :
 	Entropy	Entropie
 	Kurtosis	Kurtosis
 	Maximum	Maximum
@@ -542,6 +543,13 @@
 	Blur	Flou
 	Blur Gallery	Galerie de flous
 	Field Blur…	Flou de champ…
+# Field Blur pins (#3373)
+	No pin selected	Aucune épingle sélectionnée
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Cliquez dans l’image pour ajouter une épingle ; faites glisser une épingle pour la déplacer, ou son anneau pour modifier le flou. Suppr supprime l’épingle sélectionnée.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Faites glisser les poignées du contour pour le redimensionner et le faire pivoter, le carré pour arrondir ses angles et les points intérieurs pour définir où commence le flou.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Faites glisser l’épingle pour déplacer la bande, ou son anneau pour modifier le flou. Faites glisser les lignes pleines pour élargir la bande nette, les lignes pointillées pour régler la transition et les points pour la faire pivoter.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Faites glisser les poignées du contour pour le redimensionner et le faire pivoter ; l’anneau règle l’angle de flou.
+	Blur Angle	Angle de flou
 	Iris Blur…	Flou d'iris…
 	Tilt-Shift…	Inclinaison-décalage…
 	Path Blur…	Flou de tracé…
@@ -862,6 +870,7 @@
 	Background	Arrière-plan
 	Background Color	Couleur d'arrière-plan
 	Background Contents	Contenu de l'arrière-plan
+	Custom background color	Couleur d'arrière-plan personnalisée
 	Balance	Balance
 	Baseline	Ligne de base
 	Baseline shift	Décalage de la ligne de base
@@ -969,7 +978,6 @@
 	Contiguous	Contigu
 	Contrast	Contraste
 	Control:	Contrôle :
-	Convert document's colors to the working space	Convertir les couleurs du document vers l'espace de travail
 	Convert to sRGB	Convertir en sRVB
 	Copies	Exemplaires
 	Copper	Cuivre
@@ -1024,6 +1032,7 @@
 	Delete Group	Supprimer le groupe
 	Delete Layer Mask	Supprimer le masque de calque
 	Delete Layers	Supprimer les calques
+	Add Shortcut	Ajouter un raccourci
 	Delete Shortcut	Supprimer le raccourci
 	Delete Timeline	Supprimer le montage
 	Delete Tool Preset	Supprimer le préréglage d'outil
@@ -1551,7 +1560,6 @@
 	Use Default	Utiliser la valeur par défaut
 	Use Legacy	Utiliser l'ancienne version
 	Use Measurement Scale	Utiliser l'échelle de mesure
-	Use the embedded profile (instead of the working space)	Utiliser le profil incorporé (au lieu de l'espace de travail)
 	Variables bind a layer's visibility, text or pixels to a named data slot.	Les variables lient la visibilité, le texte ou les pixels d'un calque à un emplacement de données nommé.
 	Vertical scale	Échelle verticale
 	Vibrance	Vibrance
@@ -1869,6 +1877,8 @@
 	Camera Raw Defaults	Valeurs par défaut de Camera Raw
 	Canvas border	Bordure du canevas
 	Show canvas dots	Afficher les points du canevas
+	Clip thumbnails to layer bounds	Rogner les vignettes aux limites du calque
+	Clip Thumbnails to Layer Bounds	Rogner les vignettes aux limites du calque
 	Canvas color	Couleur du canevas
 	Canvas custom color	Couleur personnalisée du canevas
 	Color picker	Sélecteur de couleurs
@@ -2055,7 +2065,8 @@
 	Expand group  ({key}-click: all groups)	Développer le groupe  ({key}-clic : tous les groupes)
 	Fade steps	Étapes d'estompage
 	Hide the layer's effects  ({key}-click: all layers)	Masquer les effets du calque  ({key}-clic : tous les calques)
-	Import Brushes… (.abr)	Importer des pinceaux… (.abr)
+	Import Brushes… (.abr or image)	Importer des pinceaux… (.abr ou image)
+	Import Brush from Image…	Importer un pinceau depuis une image…
 	Move Group Down	Descendre le groupe
 	Move Group Up	Monter le groupe
 	Reset the brush to the defaults	Réinitialiser le pinceau aux valeurs par défaut
@@ -2162,6 +2173,9 @@
 	No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.	Aucun tracé à partir duquel créer une sélection : dessinez-en un avec l'outil Plume ou sélectionnez-en un dans le panneau Tracés.
 	Cancel opening	Annuler l'ouverture
 	Cancelled opening {name}	Ouverture de {name} annulée
+	The document “{name}” does not have an embedded {mode} profile.	Le document « {name} » n'a pas de profil {mode} incorporé.
+	The document “{name}” has an embedded color profile that does not match the current {mode} working space.	Le document « {name} » a un profil colorimétrique incorporé qui ne correspond pas à l'espace de travail {mode} actuel.
+	Working: {working}	Espace de travail : {working}
 	Developing {name}	Développement de {name}
 	Cancelled {label}	{label} : annulé
 	Esc to cancel	Échap pour annuler
@@ -2477,7 +2491,6 @@
 	Choose…	Choisir…
 	Select Folder…	Sélectionner un dossier…
 	Override Action "Save" Commands	Ignorer les commandes « Enregistrer » de l'action
-	File Naming	Dénomination des fichiers
 	Compatibility	Compatibilité
 	Mac OS	Mac OS
 	Unix	Unix
@@ -2855,6 +2868,7 @@ cameraRaw	Blending	Fusion
 	Fuchsia	Fuchsia
 	Violet	Violet
 	Large document: redrawing on the CPU	Document volumineux : redessin sur le CPU
+	Redrawing	Redessin
 	This redraw took {seconds} s on the CPU.	Ce redessin sur le CPU a pris {seconds} s.
 	Edits that change the whole document, such as a layer's blend mode, opacity or visibility, redraw all of it.	Les modifications qui touchent tout le document, comme le mode de fusion, l'opacité ou la visibilité d'un calque, le redessinent entièrement.
 	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	Les calques dépassent le budget de mémoire GPU. Augmenter Utilisation de la mémoire dans Préférences › Performances relève ce budget, jusqu'au quart de la mémoire de cet ordinateur.
@@ -2921,6 +2935,8 @@ fontWeight	Italic	Italique
 	Color Picker (Layer Style Color)	Sélecteur de couleurs (couleur du style de calque)
 	Auto Hide Notifications	Masquer automatiquement les notifications
 	Notification Duration (seconds)	Durée de la notification (secondes)
+	Bundle Arrow-Key Nudges	Regrouper les déplacements aux flèches
+	Nudge Bundle Pause (ms)	Pause de regroupement des déplacements (ms)
 	Appearance Mode	Mode d’apparence
 	Dark Theme	Thème sombre
 	Light Theme	Thème clair
@@ -3046,6 +3062,7 @@ cameraData	Lens	Objectif
 	Search settings…	Rechercher des réglages…
 	No matching settings	Aucun réglage correspondant
 	Loading fonts…	Chargement des polices…
+	Response curve	Courbe de réponse
 	Tool	Outil
 	Simulate Pressure	Simuler la pression
 	Stroke Path…	Contourner le tracé…
@@ -3083,6 +3100,7 @@ curves	Smooth	Lisser
 	Paint over hair or fur on the image; Alt paints the other mode	Peignez sur les cheveux ou la fourrure dans l'image ; Alt peint dans l'autre mode
 	Clear Brush Strokes	Effacer les traits de pinceau
 	Show rulers	Afficher les règles
+	Presentation	Présentation
 
 # Color Sampler (added with the i18n coverage repair)
 	Click to place · Alt-click or drag off-canvas to remove	Cliquez pour placer · Alt-clic ou glisser hors du canevas pour supprimer
@@ -3110,6 +3128,7 @@ curves	Smooth	Lisser
 	Remove after each stroke	Supprimer après chaque trait
 	Apply the removal ({key})	Appliquer la suppression ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Traits à supprimer : {n} (Entrée applique, Échap annule)
+	Show home recent files	Afficher les fichiers récents sur l'écran d'accueil
 	Clear Brush Controls	Effacer les commandes de pinceau
 	Reset All Locked Settings	Réinitialiser tous les paramètres verrouillés
 	Copy Texture to Other Tools	Copier la texture dans d'autres outils
@@ -3124,6 +3143,8 @@ curves	Smooth	Lisser
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	{n} action enregistrée dans {file}|{n} actions enregistrées dans {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	{n} étape sans équivalent Photoshop omise|{n} étapes sans équivalent Photoshop omises
 
+	File Naming	Dénomination des fichiers
+	Starting serial	Numéro de série initial
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Insérer un arrêt…
 	Save Set…	Enregistrer l’ensemble…
@@ -3134,5 +3155,51 @@ curves	Smooth	Lisser
 	Action playback stopped	Exécution de l’action arrêtée
 	Step {step} is waiting for its dialog	L’étape {step} attend sa boîte de dialogue
 @plural	{n} action|{n} actions	{n} action|{n} actions
+	Background (Default)	Arrière-plan (par défaut)
+	Content-Aware Fill	Remplissage d'après le contenu
+# Batch / Image Processor
+	Include All Subfolders	Inclure tous les sous-dossiers
 	Auto Add/Delete	Ajout/suppr. auto
+
+# Native Windows printing qualification
+	Don't also tick Mirror Image in Print Settings…: the two flips cancel out.	Ne cochez pas aussi Image miroir dans les paramètres d’impression : les deux inversions s’annulent.
+	Print Settings…	Paramètres d’impression…
+	Remember to turn off the printer's own colour management in Print Settings…	Pensez à désactiver la gestion des couleurs de l’imprimante dans les paramètres d’impression…
+	Sent to {printer}	Envoyé à {printer}
+	set in Print Settings…	défini dans les paramètres d’impression…
 	ICO is limited to 256 × 256 pixels	Le format ICO est limité à 256 × 256 pixels
+# Embedded Profile Mismatch: profile names beside the choices, Remember this choice
+	Use the embedded profile ({profile})	Utiliser le profil incorporé ({profile})
+	Convert to the working space ({profile})	Convertir vers l'espace de travail ({profile})
+	Remember this choice for future images	Mémoriser ce choix pour les prochaines images
+	Turn the prompt back on with Ask On Mismatch in Edit › Color Settings.	Réactivez la question avec Ask On Mismatch dans Édition › Paramètres de couleur.
+	Button Mode	Mode bouton
+	Button Mode On	Mode bouton activé
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Assombrir l'interface
+	Lighten Interface	Éclaircir l'interface
+# Bevel & Emboss Technique.
+	Technique	Technique
+	Chisel Hard	Ciselage dur
+	Chisel Soft	Ciselage doux
+	Open color-less EXR as ACEScg	Ouvrir les EXR sans espace colorimétrique en ACEScg
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	Modifier les repères sélectionnés
+	Clear Selected Guides	Effacer les repères sélectionnés
+	Delete this set	Supprimer ce jeu
+	New Set…	Nouveau jeu…
+	PhotoCraft Defaults	Valeurs par défaut de PhotoCraft
+	Save a list of these shortcuts as a web page	Enregistrer la liste de ces raccourcis en page web
+	Save the changes to this set	Enregistrer les modifications de ce jeu
+	Save these shortcuts as a .kys file	Enregistrer ces raccourcis dans un fichier .kys
+	Save these shortcuts as a new set	Enregistrer ces raccourcis comme nouveau jeu
+	Set deleted.	Jeu supprimé.
+	Set saved.	Jeu enregistré.
+	Set:	Jeu :
+	Summarize…	Résumer…
+	There are too many sets: delete one first.	Il y a trop de jeux : supprimez-en un d’abord.
+	set name	nom du jeu
+	{set} (modified)	{set} (modifié)
+	Random	Aléatoire

@@ -58,7 +58,7 @@ choice!(ColorPicker { Adobe = "adobe", System = "system" } default Adobe);
 choice!(Theme { Pro = "pro", ProMedium = "proMedium", ProLightGray = "proLightGray", ProLight = "proLight", Studio = "studio", StudioLight = "studioLight", Classic = "classic", SolarizedDark = "solarizedDark", Adwaita = "adwaita", AdwaitaDark = "adwaitaDark", BreezeLight = "breezeLight", BreezeDark = "breezeDark", SoftDark = "softDark", SoftLight = "softLight", Noctalia = "noctalia" } default ProMedium);
 choice!(AppearanceMode { Auto = "auto", Dark = "dark", Light = "light" } default Dark);
 choice!(DarkTheme { Pro = "pro", ProMedium = "proMedium", Studio = "studio", SolarizedDark = "solarizedDark", AdwaitaDark = "adwaitaDark", BreezeDark = "breezeDark", SoftDark = "softDark", Noctalia = "noctalia" } default ProMedium);
-choice!(LightTheme { StudioLight = "studioLight", ProLightGray = "proLightGray", ProLight = "proLight", Classic = "classic", Adwaita = "adwaita", BreezeLight = "breezeLight", SoftLight = "softLight" } default StudioLight);
+choice!(LightTheme { ProLight = "proLight", ProLightGray = "proLightGray", StudioLight = "studioLight", Classic = "classic", Adwaita = "adwaita", BreezeLight = "breezeLight", SoftLight = "softLight" } default ProLight);
 choice!(CanvasColor { Default = "default", Black = "black", DarkGray = "darkGray", MediumGray = "mediumGray", LightGray = "lightGray", Custom = "custom" } default Default);
 choice!(CanvasBorder { DropShadow = "dropShadow", Line = "line", None = "none" } default DropShadow);
 choice!(UiScale { Auto = "auto", P75 = "75", P80 = "80", P85 = "85", P90 = "90", P95 = "95", P100 = "100", P125 = "125", P150 = "150", P175 = "175", P200 = "200", P250 = "250", P300 = "300" } default Auto);
@@ -257,6 +257,9 @@ pub struct Interface {
     /// Show the repeating dot pattern on the canvas surround (including the empty workspace).
     /// Disable for a uniform background, for example on OLED displays (#2264).
     pub show_canvas_dots: bool,
+    /// List recent files on the Home screen (the empty workspace). Off hides the list; the
+    /// recent files themselves are kept and File > Open Recent still shows them.
+    pub show_home_recent_files: bool,
     /// Document border in standard screen mode.
     pub canvas_border: CanvasBorder,
     pub ui_scale: UiScale,
@@ -269,6 +272,9 @@ pub struct Interface {
     pub dynamic_color_sliders: bool,
     /// Draw menu item colours set with Edit › Menus.
     pub show_menu_colors: bool,
+    /// Layers panel thumbnails frame the layer's own pixels instead of the whole canvas, so small
+    /// objects in a large document stay visible (Photoshop's Clip Thumbnails to Layer Bounds; #4281).
+    pub clip_thumbnails_to_layer_bounds: bool,
     pub show_tooltips: bool,
     /// Menus, popups and collapsing sections fade and slide, and scroll areas glide to a new
     /// position. Off, everything changes at once (a reduced-motion mode; #1218, #3273).
@@ -293,11 +299,12 @@ impl Default for Interface {
             theme: Theme::ProMedium,
             appearance_mode: AppearanceMode::Dark,
             dark_theme: DarkTheme::ProMedium,
-            light_theme: LightTheme::StudioLight,
+            light_theme: LightTheme::ProLight,
             favorite_themes: Vec::new(),
             canvas_color: CanvasColor::Default,
             canvas_custom_color: "#282828".into(),
             show_canvas_dots: true,
+            show_home_recent_files: true,
             canvas_border: CanvasBorder::DropShadow,
             ui_scale: UiScale::Auto,
             language: "auto".into(),
@@ -305,6 +312,7 @@ impl Default for Interface {
             show_channels_in_color: false,
             dynamic_color_sliders: true,
             show_menu_colors: true,
+            clip_thumbnails_to_layer_bounds: false,
             show_tooltips: true,
             enable_animations: true,
             show_bounding_box_when_dragging_layer: false,
@@ -374,6 +382,13 @@ pub struct Tools {
     /// Pen pressure response: `[input, output]` control points in 0..1 that the pen's pressure
     /// passes through before it reaches any brush ([`PressureCurve`]). Linear by default.
     pub pressure_curve: Vec<[f32; 2]>,
+    /// Arrow-key nudges of one thing (the selected layers, the selection outline, the Free
+    /// Transform box) that follow each other within [`Tools::nudge_bundle_pause_ms`] are one
+    /// History state (#2259). Off: every press is a state.
+    pub bundle_nudges: bool,
+    /// The longest pause, in milliseconds, between two nudges that still bundle into one state.
+    /// Longer than a key's auto-repeat delay (about half a second), so a held key is one state.
+    pub nudge_bundle_pause_ms: u32,
 }
 
 impl Default for Tools {
@@ -392,104 +407,16 @@ impl Default for Tools {
             right_click_with_painting_tools: RightClickPaint::BrushPicker,
             use_tablet_pressure: true,
             pressure_curve: vec![[0.0, 0.0], [1.0, 1.0]],
+            bundle_nudges: true,
+            nudge_bundle_pause_ms: 1000,
         }
     }
 }
 
-/// Preferences › Tools › Pressure Curve, ready to evaluate: a monotone cubic (Fritsch–Carlson)
-/// through the control points, so a firmer press never gives less pressure. The points are
-/// sanitised here, not trusted: a whole-section update or a hand-edited preferences file can store
-/// anything. Non-finite points are dropped, the rest clamped to 0..1, sorted by input (one point
-/// per input), capped at [`Self::MAX_POINTS`], and their outputs made non-decreasing; before the
-/// first point and after the last the curve stays flat. Fewer than two usable points is linear.
-#[derive(Clone, Debug, PartialEq)]
-pub struct PressureCurve {
-    xs: Vec<f32>,
-    ys: Vec<f32>,
-    /// Tangents at the points.
-    ms: Vec<f32>,
-}
-
-impl PressureCurve {
-    pub const MAX_POINTS: usize = 16;
-
-    pub fn new(points: &[[f32; 2]]) -> Self {
-        let mut pts: Vec<[f32; 2]> =
-            points.iter().filter(|p| p[0].is_finite() && p[1].is_finite()).map(|p| [p[0].clamp(0.0, 1.0), p[1].clamp(0.0, 1.0)]).collect();
-        pts.sort_by(|a, b| a[0].total_cmp(&b[0]));
-        pts.dedup_by(|b, a| {
-            // Same input: keep the later point's output.
-            let same = (a[0] - b[0]).abs() < 1e-6;
-            if same {
-                a[1] = b[1];
-            }
-            same
-        });
-        pts.truncate(Self::MAX_POINTS);
-        if pts.len() < 2 {
-            pts = vec![[0.0, 0.0], [1.0, 1.0]];
-        }
-        let xs: Vec<f32> = pts.iter().map(|p| p[0]).collect();
-        let mut ys: Vec<f32> = pts.iter().map(|p| p[1]).collect();
-        for i in 1..ys.len() {
-            ys[i] = ys[i].max(ys[i - 1]);
-        }
-        // Fritsch–Carlson tangents: secant averages, zero at flat steps, limited so the cubic
-        // never overshoots (which keeps it monotone).
-        let n = xs.len();
-        let d: Vec<f32> = (0..n - 1).map(|k| (ys[k + 1] - ys[k]) / (xs[k + 1] - xs[k])).collect();
-        let mut ms = vec![0.0f32; n];
-        ms[0] = d[0];
-        ms[n - 1] = d[n - 2];
-        for k in 1..n - 1 {
-            ms[k] = if d[k - 1] * d[k] <= 0.0 { 0.0 } else { (d[k - 1] + d[k]) / 2.0 };
-        }
-        for k in 0..n - 1 {
-            if d[k] == 0.0 {
-                ms[k] = 0.0;
-                ms[k + 1] = 0.0;
-                continue;
-            }
-            let (a, b) = (ms[k] / d[k], ms[k + 1] / d[k]);
-            let s = a * a + b * b;
-            if s > 9.0 {
-                let t = 3.0 / s.sqrt();
-                ms[k] = t * a * d[k];
-                ms[k + 1] = t * b * d[k];
-            }
-        }
-        Self { xs, ys, ms }
-    }
-
-    /// The curve's output for pen pressure `x` (0..1; anything else is clamped, NaN reads as 0).
-    pub fn eval(&self, x: f32) -> f32 {
-        let x = if x.is_nan() { 0.0 } else { x.clamp(0.0, 1.0) };
-        let n = self.xs.len();
-        let (Some(&x0), Some(&xn)) = (self.xs.first(), self.xs.last()) else { return x };
-        if x <= x0 {
-            return self.ys.first().copied().unwrap_or(x);
-        }
-        if x >= xn {
-            return self.ys.last().copied().unwrap_or(x);
-        }
-        let k = self.xs.partition_point(|&v| v <= x).saturating_sub(1).min(n.saturating_sub(2));
-        let (Some(&xa), Some(&xb), Some(&ya), Some(&yb), Some(&ma), Some(&mb)) =
-            (self.xs.get(k), self.xs.get(k + 1), self.ys.get(k), self.ys.get(k + 1), self.ms.get(k), self.ms.get(k + 1))
-        else {
-            return x;
-        };
-        let h = xb - xa;
-        let t = (x - xa) / h;
-        let (t2, t3) = (t * t, t * t * t);
-        let y = (2.0 * t3 - 3.0 * t2 + 1.0) * ya + (t3 - 2.0 * t2 + t) * h * ma + (-2.0 * t3 + 3.0 * t2) * yb + (t3 - t2) * h * mb;
-        y.clamp(ya.min(yb), ya.max(yb))
-    }
-
-    /// The identity (the default curve): pressure passes through unchanged.
-    pub fn is_linear(&self) -> bool {
-        self.xs == [0.0, 1.0] && self.ys == [0.0, 1.0]
-    }
-}
+/// Preferences › Tools › Pressure Curve, ready to evaluate: the same monotone cubic every brush
+/// dynamic uses for its own control ([`photocraft_paint::ResponseCurve`]), sanitised the same way,
+/// since a whole-section update or a hand-edited preferences file can store anything.
+pub use photocraft_paint::ResponseCurve as PressureCurve;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -521,6 +448,9 @@ pub struct FileHandling {
     pub recover_on_launch: bool,
     /// Open a file with no ICC profile as untagged even when its EXIF ColorSpace tag says sRGB.
     pub ignore_exif_profile_tag: bool,
+    /// Most renderers write ACEScg EXRs without stating the colour space. With this on, an EXR
+    /// that would otherwise open as linear sRGB opens as ACEScg (AP1, linear) instead.
+    pub exr_aces_cg: bool,
     pub ask_before_saving_layered_tiff: bool,
     pub maximize_psd_compatibility: Ask,
     /// SVG groups deeper than this are rasterised on import; parser and document safety caps remain fixed.
@@ -540,6 +470,7 @@ impl Default for FileHandling {
             autosave_minutes: 10,
             recover_on_launch: true,
             ignore_exif_profile_tag: false,
+            exr_aces_cg: false,
             ask_before_saving_layered_tiff: true,
             maximize_psd_compatibility: Ask::Always,
             rasterize_svg_groups_deeper_than: photocraft_doc::MAX_GROUP_DEPTH as u32,
@@ -954,6 +885,20 @@ pub struct MenuCustomization {
     pub colors: BTreeMap<String, String>,
 }
 
+impl MenuCustomization {
+    /// False for the items Edit › Menus can't hide (#5096): the way back into this dialog
+    /// (Edit › Menus, Edit › Keyboard Shortcuts), Preferences, Save, Save As and Exit.
+    pub fn hideable(id: &str) -> bool {
+        !matches!(id, "edit.menus" | "edit.keyboardShortcuts" | "file.save" | "file.saveAs" | "file.exit") && !id.starts_with("edit.preferences")
+    }
+
+    /// Whether the menus leave `id` out. Items that can't be hidden stay shown even when an
+    /// older or hand-edited preferences file lists them.
+    pub fn is_hidden(&self, id: &str) -> bool {
+        Self::hideable(id) && self.hidden.iter().any(|h| h == id)
+    }
+}
+
 /// Edit › Toolbar: hidden tools and a custom order (tool names as in `ui.set {tool}`).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -988,6 +933,15 @@ pub struct Preferences {
     /// Edit › Keyboard Shortcuts: command id → shortcut (`Cmd+Shift+N` notation); an empty
     /// string removes the default shortcut.
     pub shortcuts: BTreeMap<String, String>,
+    /// Edit › Keyboard Shortcuts: a command's further keys besides its main one (#3665),
+    /// command id → keys. A list replaces the command's default alternates
+    /// ([`ALTERNATE_SHORTCUTS`]); an empty list removes them. Settings files from before this
+    /// map load with nothing stored, so every command keeps its defaults.
+    pub alternate_shortcuts: BTreeMap<String, Vec<String>>,
+    /// Edit › Keyboard Shortcuts › Set: saved shortcut sets by name (`crate::shortcut_sets`).
+    pub shortcut_sets: BTreeMap<String, crate::shortcut_sets::ShortcutSet>,
+    /// The saved set in use ("" for the defaults).
+    pub shortcut_set: String,
     pub menus: MenuCustomization,
     pub toolbar: ToolbarCustomization,
     /// Edit › Check Spelling: words added to the dictionary ("Add").
@@ -1007,10 +961,17 @@ pub struct Preferences {
     /// the footer slider's card scale, saved as the user changes them and restored at launch.
     /// JSON owned by the shell.
     pub brush_picker: Value,
+    /// The brush the tool was last using (settings and tip references, never the full bitmaps;
+    /// shaped by `brush_cmds::remembered_brush`), restored at launch so the tool starts where it
+    /// was left. Written only when `ToolState::brush_rev` moves.
+    pub last_brush: Value,
     /// The tools' options-bar settings (Move › Auto-Select, marquee Feather, tolerance, …) that
     /// differ from their defaults, saved as the user changes them and restored at launch, as
     /// Photoshop remembers each tool's options between sessions. JSON owned by the shell.
     pub tool_options: Value,
+    /// Last selected tool, restored at launch. A tool-name string owned and validated by the
+    /// shell; null in older files. Kept separate from tool options so neither overwrites the other.
+    pub selected_tool: Value,
     /// View › Extras, the View › Show items (Pixel Grid, Grid, Guides, …) and the View › Snap To
     /// targets that differ from their defaults, saved as the user toggles them and restored at
     /// launch, as Photoshop keeps them between sessions (#3762). JSON owned by the shell.
@@ -1133,6 +1094,7 @@ pub fn range(path: &str) -> Option<(f64, f64)> {
     Some(match path {
         "fileHandling.autosaveMinutes" => (1.0, 240.0),
         "fileHandling.recentFileCount" => (0.0, 100.0),
+        "tools.nudgeBundlePauseMs" => (100.0, 10_000.0),
         "fileHandling.rasterizeSvgGroupsDeeperThan" => (0.0, photocraft_doc::MAX_GROUP_DEPTH as f64),
         "interface.notificationDurationSeconds" => (1.0, 120.0),
         "export.jpegQuality" | "export.webpQuality" => (1.0, 100.0),
@@ -1154,7 +1116,7 @@ pub fn range(path: &str) -> Option<(f64, f64)> {
 
 /// Is this preference a `#rrggbb` colour?
 pub fn is_color(path: &str) -> bool {
-    if choices(path).is_some() || path.starts_with("shortcuts.") || path.starts_with("menus.") {
+    if choices(path).is_some() || path.starts_with("shortcuts.") || path.starts_with("alternateShortcuts.") || path.starts_with("menus.") {
         return false;
     }
     let leaf = path.rsplit('.').next().unwrap_or(path);
@@ -1183,9 +1145,10 @@ pub fn parse_hex(s: &str) -> Option<[u8; 3]> {
 
 // ------------------------------------------------------------------ JSON paths
 
-/// Map keys that are command ids (which contain dots): `shortcuts.<id>`, `menus.colors.<id>`.
+/// Map keys that are command ids (which contain dots): `shortcuts.<id>`,
+/// `alternateShortcuts.<id>`, `menus.colors.<id>`.
 fn keyed(path: &str) -> Option<(&str, &str)> {
-    for prefix in ["shortcuts.", "menus.colors."] {
+    for prefix in ["shortcuts.", "alternateShortcuts.", "menus.colors."] {
         if let Some(id) = path.strip_prefix(prefix) {
             return Some((&prefix[..prefix.len() - 1], id));
         }
@@ -1302,6 +1265,28 @@ impl Preferences {
 
     /// Set a value by dotted path, validating it. Unknown paths and wrong types are errors.
     pub fn set(&mut self, path: &str, value: Value) -> std::result::Result<(), String> {
+        if path == "alternateShortcuts" {
+            let obj = value.as_object().ok_or("`alternateShortcuts` maps command ids to lists of shortcuts")?;
+            let mut map = BTreeMap::new();
+            for (id, v) in obj {
+                map.insert(id.clone(), alternate_keys(v).map_err(|e| format!("`alternateShortcuts.{id}`: {e}"))?);
+            }
+            self.alternate_shortcuts = map;
+            return Ok(());
+        }
+        if let Some(id) = path.strip_prefix("alternateShortcuts.") {
+            // null = back to the command's default alternates.
+            match value {
+                Value::Null => {
+                    self.alternate_shortcuts.remove(id);
+                }
+                v => {
+                    let keys = alternate_keys(&v).map_err(|e| format!("`{path}`: {e}"))?;
+                    self.alternate_shortcuts.insert(id.to_string(), keys);
+                }
+            }
+            return Ok(());
+        }
         let value = match (path.strip_prefix("shortcuts."), &value) {
             // Normalise shortcut spelling so conflicts compare equal.
             (Some(_), Value::String(s)) if !s.is_empty() => Value::String(normalize_shortcut(s).ok_or_else(|| format!("`{s}` is not a valid shortcut"))?),
@@ -1332,6 +1317,10 @@ impl Preferences {
                 self.shortcuts.remove(id);
                 return Ok(());
             }
+            Some(("alternateShortcuts", id)) => {
+                self.alternate_shortcuts.remove(id);
+                return Ok(());
+            }
             Some(("menus.colors", id)) => {
                 self.menus.colors.remove(id);
                 return Ok(());
@@ -1357,6 +1346,50 @@ impl Preferences {
             None => default,
         }
     }
+
+    /// A command's further keys in effect (#3665): the user's list, else its defaults
+    /// ([`ALTERNATE_SHORTCUTS`]), normalised, without duplicates and without `primary` (the
+    /// command's main key in effect, which it already answers).
+    pub fn alternates(&self, id: &str, primary: Option<&str>) -> Vec<String> {
+        let main = primary.and_then(normalize_shortcut);
+        let keys: Vec<String> = match self.alternate_shortcuts.get(id) {
+            Some(list) => list.iter().filter_map(|s| normalize_shortcut(s)).collect(),
+            None => default_alternates(id).filter_map(normalize_shortcut).collect(),
+        };
+        let mut out: Vec<String> = Vec::with_capacity(keys.len());
+        for k in keys {
+            if main.as_ref() != Some(&k) && !out.contains(&k) {
+                out.push(k);
+            }
+        }
+        out
+    }
+}
+
+/// Most further keys one command may hold; Photoshop's own defaults use one.
+pub const MAX_ALTERNATES: usize = 8;
+
+/// Validate and normalise a command's alternate keys: a list of shortcut strings (a single
+/// string is a one-key list, `""` none).
+pub fn alternate_keys(v: &Value) -> std::result::Result<Vec<String>, String> {
+    let items: Vec<&Value> = match v {
+        Value::String(s) if s.is_empty() => Vec::new(),
+        Value::String(_) => vec![v],
+        Value::Array(a) => a.iter().collect(),
+        _ => return Err("alternate shortcuts are a list of shortcuts (e.g. [\"F3\"])".into()),
+    };
+    if items.len() > MAX_ALTERNATES {
+        return Err(format!("at most {MAX_ALTERNATES} alternate shortcuts (got {})", items.len()));
+    }
+    let mut out: Vec<String> = Vec::with_capacity(items.len());
+    for item in items {
+        let s = item.as_str().ok_or_else(|| format!("alternate shortcut `{item}` must be a string"))?;
+        let n = normalize_shortcut(s).ok_or_else(|| format!("`{s}` is not a valid shortcut (e.g. Cmd+Shift+N, F7)"))?;
+        if !out.contains(&n) {
+            out.push(n);
+        }
+    }
+    Ok(out)
 }
 
 // ------------------------------------------------------------------ shortcuts
@@ -1444,6 +1477,24 @@ pub const TEMPORARY_TOOLS: &[(&str, &str, &str)] = &[
     ("tools.temporary.erase", "Erase with Brush or Pencil (hold)", "`"),
 ];
 
+/// Photoshop's second default keys (#3665): (command, key). Each command keeps its main key
+/// (the one its menu shows) and answers these as well, as in Photoshop's default set: the
+/// legacy function keys F2 Cut, F3 Copy, F4 Paste and Shift+F7 Inverse; Shift+Backspace
+/// (Shift+Delete on a Mac) for Fill; and ⌘+ beside ⌘= for Zoom In.
+pub const ALTERNATE_SHORTCUTS: &[(&str, &str)] = &[
+    ("edit.cut", "F2"),
+    ("edit.copy", "F3"),
+    ("edit.paste", "F4"),
+    ("edit.fill", "Shift+Backspace"),
+    ("select.inverse", "Shift+F7"),
+    ("view.zoomIn", "Cmd++"),
+];
+
+/// A command's default alternate keys ([`ALTERNATE_SHORTCUTS`]).
+pub fn default_alternates(id: &str) -> impl Iterator<Item = &'static str> + '_ {
+    ALTERNATE_SHORTCUTS.iter().filter(move |(c, _)| *c == id).map(|(_, sc)| *sc)
+}
+
 /// Every bindable id with its default: commands, then the temporary tools.
 fn bindable() -> impl Iterator<Item = (&'static str, Option<&'static str>)> {
     crate::command_specs().iter().map(|c| (c.id, c.shortcut)).chain(TEMPORARY_TOOLS.iter().map(|t| (t.0, Some(t.2))))
@@ -1506,7 +1557,7 @@ impl Session {
         for st in &mut self.docs {
             st.history.max_states = n;
             st.history.max_bytes = bytes;
-            st.history.trim(&st.doc);
+            st.trim_history();
         }
         photocraft_compose::set_effect_cache_budget(budget << 20);
         // Without waiting for the system font scan: this runs on the UI thread at launch.
@@ -1549,7 +1600,8 @@ impl Session {
                 }
             };
             interface.insert("appearanceMode".into(), json!(mode));
-            interface.insert(slot.into(), json!(theme.name()));
+            // A partially migrated file may already contain a newer theme selection (#5139).
+            interface.entry(slot).or_insert_with(|| json!(theme.name()));
         }
         let color = v.as_object_mut().and_then(|m| m.remove("colorSettings"));
         let presets = v.as_object_mut().and_then(|m| m.remove("presets"));
@@ -1597,7 +1649,7 @@ impl Session {
         }
         let mut next = self.prefs().clone();
         let mut color_changed = false;
-        if path.is_empty() || SECTIONS.iter().any(|(id, _)| *id == path) || matches!(path, "shortcuts" | "menus" | "toolbar") {
+        if path.is_empty() || SECTIONS.iter().any(|(id, _)| *id == path) || matches!(path, "shortcuts" | "alternateShortcuts" | "menus" | "toolbar") {
             // Whole section (or everything): merge the object key by key so each value is checked.
             let obj = value.as_object().ok_or_else(|| format!("`{path}` needs an object"))?;
             for (k, v) in obj {
@@ -1606,7 +1658,12 @@ impl Session {
                     color_changed |= self.set_pref("colorSettings", v.clone(), validate_color)?;
                     continue;
                 }
-                if v.is_object() && !p.starts_with("shortcuts") && !p.ends_with(".colors") && next.get(&p).is_some_and(|c| c.is_object()) {
+                if v.is_object()
+                    && !p.starts_with("shortcuts")
+                    && !p.starts_with("alternateShortcuts")
+                    && !p.ends_with(".colors")
+                    && next.get(&p).is_some_and(|c| c.is_object())
+                {
                     for (k2, v2) in v.as_object().into_iter().flatten() {
                         next.set(&format!("{p}.{k2}"), v2.clone())?;
                     }
@@ -1786,20 +1843,30 @@ fn preferences_section(s: &mut Session, p: &Value) -> Result<Value> {
 /// Edit › Keyboard Shortcuts (engine part): list, change and reset application shortcuts.
 fn keyboard_shortcuts(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "edit.keyboardShortcuts";
+    // Every change lands at once, after all of it validated: a bad key leaves the set as it was.
+    let mut next = s.prefs().clone();
+    // A set loads first, so the call's other changes apply on top of it.
+    let mut changed = crate::shortcut_sets::load(&mut next, p).map_err(|e| bad(cmd, e))?;
     if let Some(r) = p.get("reset") {
         match r {
-            Value::Bool(true) => s.edit_prefs(|p| p.shortcuts.clear()),
-            Value::Array(ids) => s.edit_prefs(|p| {
+            Value::Bool(true) => {
+                next.shortcuts.clear();
+                next.alternate_shortcuts.clear();
+                changed = true;
+            }
+            Value::Array(ids) => {
                 for id in ids.iter().filter_map(Value::as_str) {
-                    p.shortcuts.remove(id);
+                    next.shortcuts.remove(id);
+                    next.alternate_shortcuts.remove(id);
                 }
-            }),
+                changed = true;
+            }
             _ => {}
         }
     }
-    // A Photoshop `.kys` set (`importKys`, its XML text) becomes `set` entries, matched by label
-    // (`crate::kys`); a key equal to the command's default restores the default, and keys given
-    // in `set` as well win over the file's.
+    // A Photoshop `.kys` set (`importKys`, its XML text) becomes `set` and `alternates` entries,
+    // matched by label (`crate::kys`); a key equal to the command's default restores the
+    // default, and keys given in `set` / `alternates` as well win over the file's.
     let imported;
     let mut import = None;
     let p = match p.get("importKys") {
@@ -1813,6 +1880,13 @@ fn keyboard_shortcuts(s: &mut Session, p: &Value) -> Result<Value> {
                 merged.insert(id.clone(), if default.as_deref() == Some(sc.as_str()) { Value::Null } else { json!(sc) });
             }
             merged.extend(p.get("set").and_then(Value::as_object).cloned().unwrap_or_default());
+            let mut alternates = serde_json::Map::new();
+            for (id, keys) in &plan.alternate_keys {
+                let main = plan.set.get(id).map(String::as_str);
+                let default = Preferences::default().alternates(id, main);
+                alternates.insert(id.clone(), if *keys == default { Value::Null } else { json!(keys) });
+            }
+            alternates.extend(p.get("alternates").and_then(Value::as_object).cloned().unwrap_or_default());
             import = Some(json!({
                 "name": set.name,
                 "imported": plan.set.len(),
@@ -1820,41 +1894,76 @@ fn keyboard_shortcuts(s: &mut Session, p: &Value) -> Result<Value> {
                 "unknown": plan.unknown,
                 "unreadable": plan.unreadable,
                 "alternates": plan.alternates,
+                "alternateKeys": plan.alternate_keys,
                 "toolKeys": set.tool_keys,
+                "windows": set.windows,
             }));
-            let mut next = p.clone();
-            next["set"] = Value::Object(merged);
-            imported = next;
+            let mut with_import = p.clone();
+            with_import["set"] = Value::Object(merged);
+            with_import["alternates"] = Value::Object(alternates);
+            imported = with_import;
             &imported
         }
         None => p,
     };
-    if let Some(m) = p.get("set").and_then(Value::as_object) {
-        let mut next = s.prefs().clone();
-        for (id, v) in m {
-            if !bindable().any(|(b, _)| b == id) && !p.get("allowUnknown").and_then(Value::as_bool).unwrap_or(false) {
+    let empty = serde_json::Map::new();
+    let set = match p.get("set") {
+        Some(Value::Object(m)) => m,
+        _ => &empty,
+    };
+    let alts = match p.get("alternates") {
+        None | Some(Value::Null) => &empty,
+        Some(v) => v.as_object().ok_or_else(|| bad(cmd, "`alternates` maps command ids to lists of shortcuts"))?,
+    };
+    if !set.is_empty() || !alts.is_empty() {
+        let allow_unknown = p.get("allowUnknown").and_then(Value::as_bool).unwrap_or(false);
+        changed = true;
+        for (id, v) in set {
+            if !bindable().any(|(b, _)| b == id) && !allow_unknown {
                 return Err(bad(cmd, format!("unknown command `{id}`")));
             }
             next.set(&format!("shortcuts.{id}"), v.clone()).map_err(|e| bad(cmd, e))?;
         }
-        // Like Photoshop, a shortcut moved to a new command is taken away from the old one.
+        for (id, v) in alts {
+            if !bindable().any(|(b, _)| b == id) && default_alternates(id).next().is_none() && !allow_unknown {
+                return Err(bad(cmd, format!("unknown command `{id}`")));
+            }
+            next.set(&format!("alternateShortcuts.{id}"), v.clone()).map_err(|e| bad(cmd, e))?;
+        }
+        // Like Photoshop, a shortcut moved to a new command is taken away from the old one,
+        // whether the old one held it as its main key or as an alternate (#3665).
         if p.get("removeConflicts").and_then(Value::as_bool).unwrap_or(true) {
-            for (id, v) in m {
-                let Some(sc) = v.as_str().and_then(normalize_shortcut) else { continue };
-                for (c, def) in bindable() {
+            let assigned: Vec<(&str, String)> = set
+                .iter()
+                .filter_map(|(id, v)| Some((id.as_str(), v.as_str().and_then(normalize_shortcut)?)))
+                .chain(alts.iter().flat_map(|(id, v)| alternate_keys(v).unwrap_or_default().into_iter().map(move |k| (id.as_str(), k))))
+                .collect();
+            for (id, sc) in assigned {
+                // Shell commands (View › Zoom In) have alternates but no engine default.
+                let shell = ALTERNATE_SHORTCUTS.iter().filter(|(c, _)| crate::commands::find(c).is_none()).map(|(c, _)| (*c, None));
+                for (c, def) in bindable().chain(shell) {
                     // Never strip a command that this same call is assigning:
                     // two entries for one key are a clash inside the call, which
                     // the returned conflicts list reports (#719). Stripping
                     // each other here unbound both silently.
-                    if c == id || m.contains_key(c) {
+                    if c == id || set.contains_key(c) || alts.contains_key(c) {
                         continue;
                     }
-                    if next.shortcut(c, def).and_then(normalize_shortcut).as_deref() == Some(sc.as_str()) {
+                    let main = next.shortcut(c, def).map(str::to_string);
+                    if main.as_deref().and_then(normalize_shortcut).as_deref() == Some(sc.as_str()) {
                         next.shortcuts.insert(c.to_string(), String::new());
+                    }
+                    let held = next.alternates(c, main.as_deref());
+                    if held.contains(&sc) {
+                        next.alternate_shortcuts.insert(c.to_string(), held.into_iter().filter(|k| *k != sc).collect());
                     }
                 }
             }
         }
+    }
+    // Then the sets are saved, deleted or switched, from the bindings as they now stand.
+    changed |= crate::shortcut_sets::store(&mut next, p).map_err(|e| bad(cmd, e))?;
+    if changed {
         s.edit_prefs(|p| *p = next);
     }
     let prefs = s.prefs();
@@ -1865,18 +1974,56 @@ fn keyboard_shortcuts(s: &mut Session, p: &Value) -> Result<Value> {
         .map(|c| (c.id, c.label, c.menu, c.shortcut, false))
         .chain(temporary)
         .filter(|c| filter.as_ref().is_none_or(|f| c.0.to_ascii_lowercase().contains(f) || c.1.to_ascii_lowercase().contains(f)))
-        .filter(|c| p.get("list").and_then(Value::as_bool).unwrap_or(false) || filter.is_some() || prefs.shortcuts.contains_key(c.0))
+        .filter(|c| {
+            p.get("list").and_then(Value::as_bool).unwrap_or(false)
+                || filter.is_some()
+                || prefs.shortcuts.contains_key(c.0)
+                || prefs.alternate_shortcuts.contains_key(c.0)
+        })
         .map(|(id, label, menu, def, hold)| {
-            let mut v = json!({"id": id, "label": label, "menu": menu, "default": def, "shortcut": prefs.shortcut(id, def)});
+            let main = prefs.shortcut(id, def);
+            let defaults: Vec<&str> = default_alternates(id).collect();
+            let mut v = json!({"id": id, "label": label, "menu": menu, "default": def, "shortcut": main, "alternates": prefs.alternates(id, main)});
+            if !defaults.is_empty() {
+                v["defaultAlternates"] = json!(defaults);
+            }
             if hold {
                 v["hold"] = json!(true);
             }
             v
         })
         .collect();
-    let bindings: Vec<(&str, &str)> = bindable().filter_map(|(id, def)| Some((id, prefs.shortcut(id, def)?))).collect();
-    let conflicts: Vec<Value> = conflicts(bindings).into_iter().map(|(sc, ids)| json!({"shortcut": sc, "commands": ids})).collect();
-    let mut out = json!({"overrides": prefs.shortcuts, "commands": list, "conflicts": conflicts});
+    let mut bindings: Vec<(&str, String)> = Vec::new();
+    for (id, def) in bindable() {
+        let main = prefs.shortcut(id, def);
+        bindings.extend(main.map(|m| (id, m.to_string())));
+        bindings.extend(prefs.alternates(id, main).into_iter().map(|k| (id, k)));
+    }
+    let conflicts: Vec<Value> =
+        conflicts(bindings.iter().map(|(id, k)| (*id, k.as_str()))).into_iter().map(|(sc, ids)| json!({"shortcut": sc, "commands": ids})).collect();
+    let mut out = json!({"overrides": prefs.shortcuts, "alternateOverrides": prefs.alternate_shortcuts, "commands": list, "conflicts": conflicts});
+    if let (Some(o), Value::Object(sets)) = (out.as_object_mut(), crate::shortcut_sets::describe(prefs)) {
+        o.extend(sets);
+    }
+    // The bindings as a `.kys` file, or Photoshop's Summarize page (the engine's commands; the
+    // app's dialog writes both with the shell's commands and tools added).
+    let set_name = if prefs.shortcut_set.is_empty() { crate::shortcut_sets::DEFAULTS_NAME } else { prefs.shortcut_set.as_str() };
+    if p.get("exportKys").and_then(Value::as_bool) == Some(true) {
+        let entries: Vec<crate::kys::Entry> =
+            crate::shortcut_sets::bound(prefs).into_iter().map(|(id, label, _, keys)| crate::kys::Entry { id, label, tool: false, keys }).collect();
+        out["kys"] = json!(crate::kys::write(set_name, &entries));
+    }
+    if let Some(v) = p.get("summarize").filter(|v| !v.is_null() && *v != &json!(false)) {
+        let mac = v.get("mac").and_then(Value::as_bool).unwrap_or(cfg!(target_os = "macos"));
+        let mut sections: Vec<crate::shortcut_sets::Section> = Vec::new();
+        for (_, label, menu, keys) in crate::shortcut_sets::bound(prefs) {
+            match sections.iter_mut().find(|(m, _)| *m == menu) {
+                Some((_, rows)) => rows.push((label, keys)),
+                None => sections.push((menu, vec![(label, keys)])),
+            }
+        }
+        out["html"] = json!(crate::shortcut_sets::summarize(set_name, &sections, mac));
+    }
     if let Some(import) = import {
         out["import"] = import;
     }
@@ -1897,6 +2044,9 @@ fn menus(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     let (hide, show) = (ids("hide"), ids("show"));
+    if let Some(id) = hide.iter().find(|id| !MenuCustomization::hideable(id)) {
+        return Err(bad("edit.menus", format!("`{id}` can't be hidden")));
+    }
     s.edit_prefs(|pr| {
         if p.get("reset").and_then(Value::as_bool) == Some(true) {
             pr.menus = MenuCustomization::default();
@@ -2005,7 +2155,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Keyboard Shortcuts…",
             ["Edit"],
             Some("Cmd+Alt+Shift+K"),
-            r##"{"set":{"<command id>|tools.temporary.hand|zoomIn|zoomOut":"Cmd+Shift+X"|""(remove)|null(default)}?,"reset":true|["<id>",…]?,"removeConflicts":bool=true,"filter":str?,"list":bool=false,"importKys":"<.kys XML>"?}"##,
+            r##"{"set":{"<command id>|tools.temporary.hand|zoomIn|zoomOut":"Cmd+Shift+X"|""(remove)|null(default)}?,"alternates":{"<command id>":["F3",…]|[](none)|null(default)}?,"reset":true|["<id>",…]?,"removeConflicts":bool=true,"filter":str?,"list":bool=false,"importKys":"<.kys XML>"?,"useSet":"<name>"|""(defaults)?,"saveSet":"<name>"?,"deleteSet":"<name>"?,"sets":{"<name>":{"shortcuts":{…},"alternateShortcuts":{…}}}?,"activeSet":"<name>"|""?,"exportKys":bool?,"summarize":bool|{"mac":bool}?}"##,
             keyboard_shortcuts,
             true
         ),

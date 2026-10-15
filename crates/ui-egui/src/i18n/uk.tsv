@@ -321,6 +321,12 @@
 	Oil Paint…	Олійний живопис…
 	Blur Gallery	Галерея розмиття
 	Field Blur…	Розмиття поля…
+# Field Blur pins (#3373)
+	No pin selected	Шпильку не вибрано
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Клацніть зображення, щоб додати шпильку; перетягніть шпильку, щоб перемістити її, або її кільце, щоб змінити розмиття. Delete видаляє вибрану шпильку.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Перетягуйте маркери на контурі, щоб змінити розмір і повернути його, квадрат — щоб заокруглити кути, а точки всередині — щоб задати, де починається розмиття.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Перетягніть шпильку, щоб зсунути смугу, або її кільце, щоб змінити розмиття. Суцільні лінії розширюють різку смугу, пунктирні задають перехід, а точки повертають її.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Перетягуйте маркери на контурі, щоб змінити розмір і повернути його; кільце задає кут розмиття.
 	Iris Blur…	Розмиття діафрагми…
 	Tilt-Shift…	Нахил і зсув…
 	Path Blur…	Розмиття вздовж контуру…
@@ -891,9 +897,7 @@
 	Newspaper	Газета
 	Working Spaces	Робочі простори
 	Color Management Policies	Політики керування кольором
-	Convert document's colors to the working space	Перетворити кольори документа в робочий простір
 	Assign working space	Призначити робочий простір
-	Use the embedded profile (instead of the working space)	Використати вбудований профіль (замість робочого простору)
 	Leave as is (don't color manage)	Залишити як є (без керування кольором)
 	Discard the embedded profile (don't color manage)	Відкинути вбудований профіль (без керування кольором)
 	Embed Color Profile	Вбудувати колірний профіль
@@ -1389,7 +1393,6 @@
 	Choose…	Вибрати…
 	Select Folder…	Вибрати теку…
 	Override Action "Save" Commands	Перевизначити команди «Зберегти» в дії
-	File Naming	Іменування файлів
 	Compatibility	Сумісність
 	Windows	Windows
 	Mac OS	Mac OS
@@ -1517,6 +1520,7 @@
 	Preset Name:	Назва набору:
 	Width and Height	Ширина та висота
 	Background Contents	Вміст фону
+	Custom background color	Довільний колір фону
 	White	Білий
 	Background Color	Колір фону
 	Transparent	Прозорий
@@ -1683,6 +1687,7 @@
 	These settings aren't available in PhotoCraft yet.	Ці параметри ще недоступні у PhotoCraft.
 	Shortcut removed.	Клавіатурне скорочення вилучено.
 	All shortcuts reset to PhotoCraft defaults.	Усі клавіатурні скорочення скинуто до типових значень PhotoCraft.
+	Add Shortcut	Додати клавіатурне скорочення
 	Delete Shortcut	Видалити клавіатурне скорочення
 	Press keys…	Натисніть клавіші…
 	shortcut	клавіатурне скорочення
@@ -1983,6 +1988,7 @@
 	Solid Color…	Суцільний колір…
 	Square	Квадрат
 	Stack Mode	Режим стосу
+	Choose Stack Mode:	Виберіть режим стосу:
 	Standard Deviation	Стандартне відхилення
 	Statistics…	Статистика…
 	Stylistic Alternates	Стилістичні альтернативи
@@ -2284,6 +2290,8 @@
 	Camera Raw Defaults	Типові параметри Camera Raw
 	Canvas border	Межа полотна
 	Show canvas dots	Показувати крапки полотна
+	Clip thumbnails to layer bounds	Обрізати мініатюри до меж шару
+	Clip Thumbnails to Layer Bounds	Обрізати мініатюри до меж шару
 	Canvas color	Колір полотна
 	Canvas custom color	Довільний колір полотна
 	Classic	Класична
@@ -2452,6 +2460,9 @@
 	No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.	Немає контуру для створення виділення: намалюйте його пером або виберіть на панелі контурів.
 	Cancel opening	Скасувати відкриття
 	Cancelled opening {name}	Відкриття {name} скасовано
+	The document “{name}” does not have an embedded {mode} profile.	Документ «{name}» не має вбудованого профілю {mode}.
+	The document “{name}” has an embedded color profile that does not match the current {mode} working space.	Вбудований колірний профіль документа «{name}» не відповідає поточному робочому простору {mode}.
+	Working: {working}	Робочий простір: {working}
 	Developing {name}	Обробка {name}
 	Cancelled {label}	Скасовано: {label}
 	Esc to cancel	Esc для скасування
@@ -2674,6 +2685,7 @@ cameraRaw	Roughness	Шорсткість
 	Fuchsia	Фуксія
 	Violet	Фіалковий
 	Large document: redrawing on the CPU	Великий документ: перемальовування на CPU
+	Redrawing	Перемальовування
 	This redraw took {seconds} s on the CPU.	Це перемальовування на CPU тривало {seconds} с.
 	Edits that change the whole document, such as a layer's blend mode, opacity or visibility, redraw all of it.	Зміни, що впливають на весь документ, як-от режим накладання, непрозорість чи видимість шару, перемальовують його повністю.
 	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	Його шари не вміщуються в бюджет пам'яті GPU. Збільшення використання пам'яті в Налаштування › Продуктивність підвищує бюджет до чверті пам'яті цього комп'ютера.
@@ -2903,7 +2915,8 @@ fontWeight	Italic	Курсивний
 	Frame {current} / {total}	Кадр {current} / {total}
 	Create new brush from the current settings	Створити новий пензель із поточних параметрів
 	Delete brush	Видалити пензель
-	Import Brushes… (.abr)	Імпортувати пензлі… (.abr)
+	Import Brushes… (.abr or image)	Імпортувати пензлі… (.abr або зображення)
+	Import Brush from Image…	Імпортувати пензель із зображення…
 	System Info	Інформація про систему
 	Click to sample the foreground colour  ·  {key}-click for background	Клацання бере зразок переднього плану  ·  {key}+клацання для фону
 	Create Warped Text	Створити деформований текст
@@ -3605,6 +3618,8 @@ cameraRaw	Masking	Маскування
 	Color Picker (Layer Style Color)	Палітра кольорів (колір стилю шару)
 	Auto Hide Notifications	Автоматично приховувати сповіщення
 	Notification Duration (seconds)	Тривалість сповіщення (секунди)
+	Bundle Arrow-Key Nudges	Поєднувати зсуви стрілками
+	Nudge Bundle Pause (ms)	Пауза поєднання зсувів (мс)
 	Appearance Mode	Режим вигляду
 	Dark Theme	Темна тема
 	Light Theme	Світла тема
@@ -3718,6 +3733,7 @@ cameraData	Lens	Об'єктив
 	No matching settings	Немає відповідних налаштувань
 	PhotoCraft — Screen Color Picker	PhotoCraft — Піпетка кольору екрана
 	Loading fonts…	Завантаження шрифтів…
+	Response curve	Крива відгуку
 	Simulate Pressure	Імітувати натиск
 	Stroke Path…	Обвести контур…
 	Background Eraser	Фонова гумка
@@ -3765,6 +3781,7 @@ curves	Smooth	Згладити
 	There is no crop size or ratio to save	Немає розміру чи співвідношення сторін кадрування для збереження
 	Scale:	Масштаб:
 	Snap to Origin	Прив'язати до початку координат
+	Presentation	Представлення
 
 # Color Sampler (added with the i18n coverage repair)
 	Click to place · Alt-click or drag off-canvas to remove	Клацніть, щоб розмістити · Alt-клацання або перетягування за межі полотна для видалення
@@ -3807,6 +3824,7 @@ curves	Smooth	Згладити
 	Remove after each stroke	Видаляти після кожного штриха
 	Apply the removal ({key})	Застосувати видалення ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Штрихів для видалення: {n} (Enter застосовує, Esc скасовує)
+	Show home recent files	Показувати нещодавні файли на головному екрані
 	Clear Brush Controls	Очистити параметри пензля
 	Reset All Locked Settings	Скинути всі заблоковані параметри
 	Copy Texture to Other Tools	Скопіювати текстуру в інші інструменти
@@ -3821,6 +3839,8 @@ curves	Smooth	Згладити
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	Збережено {n} операцію до {file}|Збережено {n} операції до {file}|Збережено {n} операцій до {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	Пропущено {n} крок без відповідника в Photoshop|Пропущено {n} кроки без відповідника в Photoshop|Пропущено {n} кроків без відповідника в Photoshop
 
+	File Naming	Іменування файлів
+	Starting serial	Початковий порядковий номер
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Вставити зупинку…
 	Save Set…	Зберегти набір…
@@ -3831,5 +3851,49 @@ curves	Smooth	Згладити
 	Action playback stopped	Відтворення операції зупинено
 	Step {step} is waiting for its dialog	Крок {step} очікує на свій діалог
 @plural	{n} action|{n} actions	{n} операція|{n} операції|{n} операцій
+	Background (Default)	Фон (типовий)
+# Batch / Image Processor
+	Include All Subfolders	Включити всі вкладені папки
 	Auto Add/Delete	Автододавання/видалення
+
+# Native Windows printing qualification
+	Don't also tick Mirror Image in Print Settings…: the two flips cancel out.	Не вмикайте також дзеркальне відображення в параметрах друку: два відображення скасовують одне одного.
+	Print Settings…	Параметри друку…
+	Remember to turn off the printer's own colour management in Print Settings…	Не забудьте вимкнути керування кольором самого принтера в параметрах друку…
+	Sent to {printer}	Надіслано на {printer}
+	set in Print Settings…	задається в параметрах друку…
 	ICO is limited to 256 × 256 pixels	ICO обмежено розміром 256 × 256 пікселів
+# Embedded Profile Mismatch: profile names beside the choices, Remember this choice
+	Use the embedded profile ({profile})	Використати вбудований профіль ({profile})
+	Convert to the working space ({profile})	Перетворити в робочий простір ({profile})
+	Remember this choice for future images	Запам’ятати цей вибір для наступних зображень
+	Turn the prompt back on with Ask On Mismatch in Edit › Color Settings.	Знову ввімкнути запитання можна параметром Ask On Mismatch у Редагування › Налаштування кольору.
+	Button Mode	Режим кнопок
+	Button Mode On	Режим кнопок увімкнено
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Зробити інтерфейс темнішим
+	Lighten Interface	Зробити інтерфейс світлішим
+# Bevel & Emboss Technique.
+	Technique	Метод
+	Chisel Hard	Жорстке різьблення
+	Chisel Soft	М'яке різьблення
+	Open color-less EXR as ACEScg	Відкривати EXR без колірного профілю як ACEScg
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	Редагувати вибрані напрямні
+	Clear Selected Guides	Очистити вибрані напрямні
+	Delete this set	Видалити цей набір
+	New Set…	Новий набір…
+	PhotoCraft Defaults	Стандартні PhotoCraft
+	Save a list of these shortcuts as a web page	Зберегти список цих клавіатурних скорочень як вебсторінку
+	Save the changes to this set	Зберегти зміни в цьому наборі
+	Save these shortcuts as a .kys file	Зберегти ці клавіатурні скорочення як файл .kys
+	Save these shortcuts as a new set	Зберегти ці клавіатурні скорочення як новий набір
+	Set deleted.	Набір видалено.
+	Set saved.	Набір збережено.
+	Set:	Набір:
+	Summarize…	Зведення…
+	There are too many sets: delete one first.	Забагато наборів: спершу видаліть один.
+	set name	назва набору
+	{set} (modified)	{set} (змінено)

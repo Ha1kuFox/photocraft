@@ -343,6 +343,13 @@
 	Oil Paint…	Масляная живопись…
 	Blur Gallery	Галерея размытия
 	Field Blur…	Размытие по полю…
+# Field Blur pins (#3373)
+	No pin selected	Булавка не выбрана
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Щелкните изображение, чтобы добавить булавку; перетащите булавку, чтобы переместить ее, или ее кольцо, чтобы изменить размытие. Delete удаляет выбранную булавку.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Перетаскивайте маркеры на контуре, чтобы изменить размер и повернуть его, квадрат — чтобы скруглить углы, а точки внутри — чтобы задать, где начинается размытие.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Перетащите булавку, чтобы сдвинуть полосу, или ее кольцо, чтобы изменить размытие. Сплошные линии расширяют резкую полосу, пунктирные задают переход, а точки поворачивают ее.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Перетаскивайте маркеры на контуре, чтобы изменить размер и повернуть его; кольцо задает угол размытия.
+	Blur Angle	Угол размытия
 	Iris Blur…	Диафрагменное размытие…
 	Tilt-Shift…	Наклон-сдвиг…
 	Path Blur…	Размытие по контуру…
@@ -913,9 +920,7 @@
 	Newspaper	Газетная бумага
 	Working Spaces	Рабочие пространства
 	Color Management Policies	Правила управления цветом
-	Convert document's colors to the working space	Преобразовать цвета документа в рабочее пространство
 	Assign working space	Назначить рабочее пространство
-	Use the embedded profile (instead of the working space)	Использовать встроенный профиль (вместо рабочего пространства)
 	Leave as is (don't color manage)	Оставить как есть (без управления цветом)
 	Discard the embedded profile (don't color manage)	Не использовать встроенный профиль (без управления цветом)
 	Embed Color Profile	Встроить цветовой профиль
@@ -1042,6 +1047,8 @@
 	Rename Brush…	Переименовать кисть…
 	Delete Brush	Удалить кисть
 	Import Brushes…	Импортировать кисти…
+	Import Brushes… (.abr or image)	Импортировать кисти… (.abr или изображение)
+	Import Brush from Image…	Импортировать кисть из изображения…
 	Gradient Preset Options	Параметры наборов градиентов
 	Import .GRD	Импортировать .GRD
 	Choose a gradient file (.grd).	Выберите файл градиентов (.grd).
@@ -1410,7 +1417,6 @@
 	Choose…	Выбрать…
 	Select Folder…	Выбрать папку…
 	Override Action "Save" Commands	Переопределить команды «Сохранить» в операции
-	File Naming	Именование файлов
 	Compatibility	Совместимость
 	Windows	Windows
 	Mac OS	Mac OS
@@ -1536,6 +1542,7 @@
 	Preset Name:	Имя набора:
 	Width and Height	Ширина и высота
 	Background Contents	Содержимое фона
+	Custom background color	Свой цвет фона
 	White	Белый
 	Background Color	Цвет фона
 	Transparent	Прозрачный
@@ -1702,6 +1709,7 @@
 	These settings aren't available in PhotoCraft yet.	Эти параметры пока недоступны в PhotoCraft.
 	Shortcut removed.	Комбинация клавиш удалена.
 	All shortcuts reset to PhotoCraft defaults.	Все комбинации клавиш сброшены к стандартным PhotoCraft.
+	Add Shortcut	Добавить комбинацию
 	Delete Shortcut	Удалить комбинацию
 	Press keys…	Нажмите клавиши…
 	shortcut	комбинация
@@ -2004,6 +2012,7 @@
 	Solid Color…	Однотонный цвет…
 	Square	Квадрат
 	Stack Mode	Режим стопки
+	Choose Stack Mode:	Выберите режим стопки:
 	Standard Deviation	Стандартное отклонение
 	Statistics…	Статистика…
 	Stylistic Alternates	Стилистические варианты
@@ -2309,6 +2318,8 @@
 	Camera Raw Defaults	Значения Camera Raw по умолчанию
 	Canvas border	Рамка холста
 	Show canvas dots	Показывать точки холста
+	Clip thumbnails to layer bounds	Обрезать миниатюры по границам слоя
+	Clip Thumbnails to Layer Bounds	Обрезать миниатюры по границам слоя
 	Canvas color	Цвет холста
 	Canvas custom color	Свой цвет холста
 	Classic	Классическая
@@ -2479,6 +2490,9 @@
 	No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.	Нет контура для создания выделения: нарисуйте его инструментом «Перо» или выберите на панели «Контуры».
 	Cancel opening	Отменить открытие
 	Cancelled opening {name}	Открытие {name} отменено
+	The document “{name}” does not have an embedded {mode} profile.	В документе «{name}» нет встроенного профиля {mode}.
+	The document “{name}” has an embedded color profile that does not match the current {mode} working space.	Встроенный цветовой профиль документа «{name}» не совпадает с текущим рабочим пространством {mode}.
+	Working: {working}	Рабочее пространство: {working}
 	Developing {name}	Обработка {name}
 	Cancelled {label}	{label}: отменено
 	Esc to cancel	Esc — отмена
@@ -2704,6 +2718,7 @@ cameraRaw	Roughness	Неровность
 	Fuchsia	Фуксия
 	Violet	Фиолетовый
 	Large document: redrawing on the CPU	Большой документ: перерисовка на CPU
+	Redrawing	Перерисовка
 	This redraw took {seconds} s on the CPU.	Эта перерисовка на CPU заняла {seconds} с.
 	Edits that change the whole document, such as a layer's blend mode, opacity or visibility, redraw all of it.	Правки, затрагивающие весь документ, например режим наложения, непрозрачность или видимость слоя, перерисовывают его целиком.
 	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	Слои не помещаются в бюджет памяти GPU. Увеличение параметра «Память» в разделе Настройки › Производительность повышает бюджет, но не больше четверти памяти этого компьютера.
@@ -2772,6 +2787,8 @@ fontWeight	Italic	Курсив
 	Color Picker (Layer Style Color)	Палитра цветов (цвет стиля слоя)
 	Auto Hide Notifications	Автоскрытие уведомлений
 	Notification Duration (seconds)	Длительность уведомления (секунды)
+	Bundle Arrow-Key Nudges	Объединять сдвиги стрелками
+	Nudge Bundle Pause (ms)	Пауза объединения сдвигов (мс)
 	Appearance Mode	Режим оформления
 	Dark Theme	Тёмная тема
 	Light Theme	Светлая тема
@@ -2969,6 +2986,7 @@ cameraData	Lens	Объектив
 	Search settings…	Поиск настроек…
 	No matching settings	Нет подходящих настроек
 	Loading fonts…	Загрузка шрифтов…
+	Response curve	Кривая отклика
 	Tool	Инструмент
 	Simulate Pressure	Имитировать нажим
 	Stroke Path…	Обвести контур…
@@ -3012,6 +3030,7 @@ curves	Smooth	Сгладить
 	Select the crop presets to delete	Выберите наборы параметров кадрирования для удаления
 	Enter a name for the crop preset	Введите имя набора параметров кадрирования
 	There is no crop size or ratio to save	Нет размера или соотношения сторон кадрирования для сохранения
+	Presentation	Представление
 
 # Color Sampler (added with the i18n coverage repair)
 	Click to place · Alt-click or drag off-canvas to remove	Щёлкните, чтобы разместить · Alt-щелчок или перетаскивание за пределы холста для удаления
@@ -3054,6 +3073,7 @@ curves	Smooth	Сгладить
 	Remove after each stroke	Удалять после каждого штриха
 	Apply the removal ({key})	Применить удаление ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Штрихов к удалению: {n} (Enter применяет, Esc отменяет)
+	Show home recent files	Показывать недавние файлы на домашнем экране
 	Clear Brush Controls	Очистить параметры кисти
 	Reset All Locked Settings	Сбросить все заблокированные параметры
 	Copy Texture to Other Tools	Скопировать текстуру в другие инструменты
@@ -3068,6 +3088,8 @@ curves	Smooth	Сгладить
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	Сохранена {n} операция в {file}|Сохранены {n} операции в {file}|Сохранено {n} операций в {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	Пропущен {n} шаг без эквивалента в Photoshop|Пропущены {n} шага без эквивалента в Photoshop|Пропущено {n} шагов без эквивалента в Photoshop
 
+	File Naming	Именование файлов
+	Starting serial	Начальный порядковый номер
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Вставить остановку…
 	Save Set…	Сохранить набор…
@@ -3078,5 +3100,71 @@ curves	Smooth	Сгладить
 	Action playback stopped	Воспроизведение операции остановлено
 	Step {step} is waiting for its dialog	Шаг {step} ожидает своего диалога
 @plural	{n} action|{n} actions	{n} операция|{n} операции|{n} операций
+	Background (Default)	Фон (по умолчанию)
+	Content-Aware Fill	Заливка с учётом содержимого
+# Batch / Image Processor
+	Include All Subfolders	Включить все вложенные папки
 	Auto Add/Delete	Автодобавление/удаление
+
+# Native Windows printing qualification
+	Don't also tick Mirror Image in Print Settings…: the two flips cancel out.	Не включайте также зеркальное отражение в параметрах печати: два отражения отменяют друг друга.
+	Print Settings…	Параметры печати…
+	Remember to turn off the printer's own colour management in Print Settings…	Не забудьте отключить управление цветом самого принтера в параметрах печати…
+	Sent to {printer}	Отправлено на {printer}
+	set in Print Settings…	задаётся в параметрах печати…
 	ICO is limited to 256 × 256 pixels	ICO ограничен размером 256 × 256 пикселей
+
+# Dynamic selection context menu and appearance favorites
+	Select Inverse	Инвертировать выделение
+	Pro (Light)	Pro (светлая)
+	Pro (Light Gray)	Pro (светло-серая)
+
+# Measurement Log column headers (analysis_cmds::COLUMNS)
+	Label	Метка
+	Date and Time	Дата и время
+	Scale Units	Единицы масштаба
+	Scale Factor	Коэффициент масштаба
+	Area	Площадь
+	Perimeter	Периметр
+	Circularity	Круглость
+	Gray Value (Minimum)	Уровень серого (минимум)
+	Gray Value (Maximum)	Уровень серого (максимум)
+	Gray Value (Mean)	Уровень серого (среднее)
+	Gray Value (Median)	Уровень серого (медиана)
+	Integrated Density	Интегральная плотность
+	Length	Длина
+# Embedded Profile Mismatch: profile names beside the choices, Remember this choice
+	Use the embedded profile ({profile})	Использовать встроенный профиль ({profile})
+	Convert to the working space ({profile})	Преобразовать в рабочее пространство ({profile})
+	Remember this choice for future images	Запомнить этот выбор для следующих изображений
+	Turn the prompt back on with Ask On Mismatch in Edit › Color Settings.	Снова включить вопрос можно параметром Ask On Mismatch в Редактирование › Настройки цвета.
+	Button Mode	Режим кнопок
+	Button Mode On	Режим кнопок включён
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Сделать интерфейс темнее
+	Lighten Interface	Сделать интерфейс светлее
+# Bevel & Emboss Technique.
+	Technique	Метод
+	Chisel Hard	Жесткая огранка
+	Chisel Soft	Мягкая огранка
+	Open color-less EXR as ACEScg	Открывать EXR без цветового профиля как ACEScg
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	Изменить выбранные направляющие
+	Clear Selected Guides	Удалить выбранные направляющие
+	Delete this set	Удалить этот набор
+	New Set…	Новый набор…
+	PhotoCraft Defaults	Стандартные PhotoCraft
+	Save a list of these shortcuts as a web page	Сохранить список этих комбинаций как веб-страницу
+	Save the changes to this set	Сохранить изменения в этом наборе
+	Save these shortcuts as a .kys file	Сохранить эти комбинации как файл .kys
+	Save these shortcuts as a new set	Сохранить эти комбинации как новый набор
+	Set deleted.	Набор удалён.
+	Set saved.	Набор сохранён.
+	Set:	Набор:
+	Summarize…	Сводка…
+	There are too many sets: delete one first.	Слишком много наборов: сначала удалите один.
+	set name	имя набора
+	{set} (modified)	{set} (изменён)
+	Random	Случайно

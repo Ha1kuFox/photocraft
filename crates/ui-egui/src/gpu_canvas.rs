@@ -112,6 +112,21 @@ pub struct GpuCanvas {
     health: photocraft_gpu::DeviceHealth,
 }
 
+/// Whether `regenerate_mips` builds each level in a scratch texture and copies it back: on
+/// Intel adapters under DX12 only, where some drivers corrupt reduced previews when a pass
+/// samples one mip level and renders into another of the same texture (#892, Intel UHD 620).
+/// Everywhere else it renders straight into the level: on an NVIDIA DX12 adapter the scratch
+/// textures, created per level on every refresh, cost about 1 ms of CPU time per brush dab
+/// (#4515). `PHOTOCRAFT_SEPARATE_MIPS` (`setting`) forces it on (`1`) or off (`0`).
+pub fn separate_mip_targets(backend: wgpu::Backend, vendor: u32, setting: Option<&str>) -> bool {
+    const INTEL: u32 = 0x8086;
+    match setting.map(str::trim) {
+        Some("1") => true,
+        Some("0") => false,
+        _ => backend == wgpu::Backend::Dx12 && vendor == INTEL,
+    }
+}
+
 /// Can `adapter` use `Rgba16Float` as a sampled, filtered, render-target and copy texture?
 /// (Core WebGPU guarantees it; WebGL2 needs `EXT_color_buffer_float`, and some drivers lack it.)
 pub fn supports_f16_canvas(adapter: &wgpu::Adapter) -> bool {
@@ -141,7 +156,8 @@ impl GpuCanvas {
         let health = photocraft_gpu::DeviceHealth::watch(&rs.device);
         let mut res = Resources::new(&rs.device, &rs.queue, rs.target_format, high != HighPolicy::Off);
         res.health = health.clone();
-        res.separate_mip_targets = rs.adapter.get_info().backend == wgpu::Backend::Dx12;
+        let info = rs.adapter.get_info();
+        res.separate_mip_targets = separate_mip_targets(info.backend, info.vendor, std::env::var("PHOTOCRAFT_SEPARATE_MIPS").ok().as_deref());
         rs.renderer.write().callback_resources.insert(res);
         log::info!("gpu canvas: target {:?}, max texture {max}, tile {tile}, 16F canvas {high:?}", rs.target_format);
         Self { rs: rs.clone(), tile, high, health }
@@ -432,8 +448,10 @@ impl GpuCanvas {
         }
         // A full refresh whose layer pages don't fit the memory budget would re-upload the
         // evicted ones every time (no faster than the CPU, and more memory): the banded CPU
-        // compositor does it, and edits in the view (damage rects) stay on the GPU.
-        if region == doc.bounds() && !comp.fits_budget(doc, region) {
+        // compositor does it (in the background on desktop). So does a large damage rect, such
+        // as hiding a big layer (#4024); small edits in the view stay on the GPU.
+        let large = region.width() as u64 * region.height() as u64 >= DEFER_PX;
+        if (region == doc.bounds() || large) && !comp.fits_budget(doc, region) {
             res.compositor = Some(comp);
             return Err(photocraft_gpu::Unsupported(OVER_BUDGET.into()));
         }
@@ -528,6 +546,20 @@ impl GpuCanvas {
         damage: Option<photocraft_geom::Rect>,
         display: Option<&photocraft_engine::display_color::CanvasDisplay>,
     ) -> Refresh {
+        self.refresh_with(key, doc, damage, display, false)
+    }
+
+    /// [`GpuCanvas::refresh`], except that with `defer`, a refresh of at least [`DEFER_PX`] the
+    /// CPU compositor would draw is left to the caller (`background_redraw`): the texture is made
+    /// ready (keeping what it shows when it already fits) and the kind is [`REFRESH_DEFERRED`].
+    pub fn refresh_with(
+        &self,
+        key: u64,
+        doc: &photocraft_doc::Document,
+        damage: Option<photocraft_geom::Rect>,
+        display: Option<&photocraft_engine::display_color::CanvasDisplay>,
+        defer: bool,
+    ) -> Refresh {
         if let Some(f) = self.fault() {
             // Nothing reaches the GPU any more; the app switches to the CPU canvas.
             return Refresh { kind: "lost", fallback: Some(f.to_string()), ..Default::default() };
@@ -564,6 +596,12 @@ impl GpuCanvas {
             }
             Err(e) => out.fallback = Some(e.0),
         }
+        let px = region.width() as u64 * region.height() as u64;
+        if defer && px >= DEFER_PX && self.prepare_texture(key, doc).is_some() {
+            out.kind = REFRESH_DEFERRED;
+            out.px = px;
+            return out;
+        }
         if let Some(r) = damage {
             if r.is_empty() {
                 out.kind = "rect";
@@ -591,22 +629,8 @@ impl GpuCanvas {
     /// never needs a full-size float composite or texture-format copy in memory.
     pub fn upload_composite(&self, key: u64, doc: &photocraft_doc::Document, display: Option<&photocraft_engine::display_color::CanvasDisplay>) {
         let size = [doc.size.width, doc.size.height];
-        if size[0] == 0 || size[1] == 0 || !self.health.is_ok() {
-            return;
-        }
-        let format = self.format_for(doc.depth, size);
+        let Some(format) = self.prepare_texture(key, doc) else { return };
         let (device, queue) = (&self.rs.device, &self.rs.queue);
-        {
-            let mut renderer = self.rs.renderer.write();
-            let Some(res) = renderer.callback_resources.get_mut::<Resources>() else { return };
-            if res.docs.get(&key).is_none_or(|d| d.size != size || d.format != format) {
-                let Some(tex) = DocTextures::new(device, res, size, self.tile, format) else {
-                    res.docs.remove(&key);
-                    return;
-                };
-                res.docs.insert(key, tex);
-            }
-        }
         let mut rgba = Vec::new();
         let _ = photocraft_compose::render_bands(doc, doc.bounds(), 0, |band| -> Result<(), ()> {
             if !self.health.is_ok() {
@@ -633,18 +657,38 @@ impl GpuCanvas {
         }
     }
 
+    /// Make sure document `key` has a display texture of `doc`'s size and format, keeping the one
+    /// it has when that fits. Returns its format, or `None` when it can't be created.
+    pub fn prepare_texture(&self, key: u64, doc: &photocraft_doc::Document) -> Option<wgpu::TextureFormat> {
+        let size = [doc.size.width, doc.size.height];
+        if size[0] == 0 || size[1] == 0 || !self.health.is_ok() {
+            return None;
+        }
+        let format = self.format_for(doc.depth, size);
+        let mut renderer = self.rs.renderer.write();
+        let res = renderer.callback_resources.get_mut::<Resources>()?;
+        if res.docs.get(&key).is_none_or(|d| d.size != size || d.format != format) {
+            let Some(tex) = DocTextures::new(&self.rs.device, res, size, self.tile, format) else {
+                res.docs.remove(&key);
+                return None;
+            };
+            res.docs.insert(key, tex);
+        }
+        Some(format)
+    }
+
     /// Free textures, display LUTs and their signatures for documents not in `live`.
     pub fn retain(&self, live: &[u64]) {
         let mut renderer = self.rs.renderer.write();
         let Some(res) = renderer.callback_resources.get_mut::<Resources>() else { return };
         if res.docs.keys().any(|k| !live.contains(k)) {
-            let gone: Vec<u64> = res.docs.keys().filter(|k| !live.contains(k)).copied().collect();
-            if let Some(c) = res.compositor.as_mut() {
-                for k in &gone {
-                    c.forget_doc(photocraft_doc::DocId(*k));
-                }
-            }
             res.docs.retain(|k, _| live.contains(k));
+        }
+        // Everything the compositor holds for documents that aren't open, also when their
+        // texture entry was dropped earlier (over budget, a failed render), which used to leave
+        // their pages and effect maps resident after closing (#4529).
+        if let Some(c) = res.compositor.as_mut() {
+            c.retain_docs(|d| live.contains(&d.0));
         }
         // LUTs and identity-transform signatures can outlive document textures. Prune both,
         // or a preserved-ID reopen can skip rebuilding a missing LUT.
@@ -764,6 +808,16 @@ fn texture_buffer<'a>(
     }
 }
 
+/// A CPU composite `buf` as texels of a `format` canvas texture, in `display`'s encoding: what
+/// [`GpuCanvas::upload_rect`] takes. Runs anywhere (a redraw's worker converts its own pieces).
+pub fn display_texels(
+    format: wgpu::TextureFormat,
+    display: Option<&photocraft_engine::display_color::CanvasDisplay>,
+    buf: &photocraft_compose::Buffer,
+) -> Vec<u8> {
+    texels(format, &texture_buffer(display, buf).px)
+}
+
 /// What a [`GpuCanvas::refresh`] did.
 #[derive(Clone, Debug, Default)]
 pub struct Refresh {
@@ -862,6 +916,9 @@ pub struct Perf {
     pub spans: std::collections::BTreeMap<&'static str, f64>,
     #[serde(skip)]
     max_decay: f64,
+    /// Composite and upload time of this frame's canvas refreshes, in ms (the stroke trace).
+    #[serde(skip)]
+    pub(crate) frame_refresh_ms: f64,
 }
 
 /// What the app renders with and why (Help › System Info, Preferences › Performance, the `perf`
@@ -976,6 +1033,7 @@ pub fn backend_name(b: wgpu::Backend) -> &'static str {
 
 impl Perf {
     pub fn record(&mut self, kind: &'static str, px: u64, composite_ms: f64, upload_ms: f64) {
+        self.frame_refresh_ms += composite_ms + upload_ms;
         self.last_refresh = kind;
         self.last_refresh_px = px;
         self.composite_ms = composite_ms;
@@ -1151,6 +1209,13 @@ pub const OVER_CANVAS_BUDGET: &str = "the canvas exceeds the GPU texture budget;
 /// was created, and the caller draws the CPU canvas instead.
 pub const REFRESH_OVER_BUDGET: &str = "over-budget";
 
+/// [`Refresh::kind`] of a CPU refresh left to the caller ([`GpuCanvas::refresh_with`]).
+pub const REFRESH_DEFERRED: &str = "deferred";
+
+/// The smallest CPU refresh (pixels) [`GpuCanvas::refresh_with`] defers: below it, the
+/// synchronous composite takes a fraction of a second even with many layers.
+pub const DEFER_PX: u64 = 1 << 22;
+
 /// GPU bytes one document's display texture set (every tile and mip level) may take: a quarter
 /// of physical memory (`ram`; 16 GB assumed when unknown), at least [`MIN_GPU_BUDGET`]. The set
 /// covers the whole canvas at full resolution, so its size follows the declared canvas, not the
@@ -1236,7 +1301,7 @@ struct Resources {
     views: HashMap<u64, ViewGpu>,
     out_linear: bool,
     /// Build each mip level in a scratch texture and copy it back instead of rendering into
-    /// the level directly (DX12 only: works around reduced-preview corruption on Intel drivers).
+    /// the level directly (see [`separate_mip_targets`]).
     separate_mip_targets: bool,
     /// The wgpu layer compositor (created on first use).
     compositor: Option<photocraft_gpu::Compositor>,
@@ -1645,8 +1710,8 @@ impl DocTextures {
                         wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&res.mip_sampler) },
                     ],
                 });
-                // Keep the sampled source and render attachment in separate resources on DX12
-                // (`Resources::separate_mip_targets`): some Intel DX12 drivers corrupt reduced
+                // Keep the sampled source and render attachment in separate resources on Intel
+                // DX12 adapters ([`separate_mip_targets`]): some of their drivers corrupt reduced
                 // previews when both are mip levels of the same texture, even though the
                 // subresources do not overlap. Elsewhere render straight into the level, which
                 // spares a scratch texture and a copy per level on every edit.
@@ -2151,6 +2216,23 @@ mod mip_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The scratch-texture workaround is for Intel's DX12 drivers (#892); other DX12 adapters
+    /// render straight into the level like every other backend (#4515).
+    #[test]
+    fn separate_mip_targets_only_for_intel_on_dx12() {
+        use wgpu::Backend::{Dx12, Metal, Vulkan};
+        let (intel, nvidia, amd) = (0x8086, 0x10de, 0x1002);
+        assert!(separate_mip_targets(Dx12, intel, None));
+        assert!(!separate_mip_targets(Dx12, nvidia, None));
+        assert!(!separate_mip_targets(Dx12, amd, None));
+        assert!(!separate_mip_targets(Vulkan, intel, None));
+        assert!(!separate_mip_targets(Metal, 0, None));
+        // PHOTOCRAFT_SEPARATE_MIPS forces either way; anything else leaves the default.
+        assert!(separate_mip_targets(Dx12, nvidia, Some("1")));
+        assert!(!separate_mip_targets(Dx12, intel, Some(" 0 ")));
+        assert!(separate_mip_targets(Dx12, intel, Some("yes")));
+    }
 
     #[test]
     fn gpu_budget_follows_memory_usage_and_ram() {

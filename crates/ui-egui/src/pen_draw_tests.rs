@@ -123,6 +123,23 @@ fn alt_breaks_the_handle_being_dragged_and_grabs_the_last_outgoing_handle() {
 }
 
 #[test]
+fn opening_a_new_document_finishes_the_previous_pen_path() {
+    let mut h = harness();
+    click(&mut h, [20.0, 20.0]);
+    click(&mut h, [120.0, 20.0]);
+    assert_eq!(h.state().ui.pen.as_ref().map(|p| p.knots.len()), Some(2));
+    let original = h.state().session.active().unwrap().doc.id;
+
+    h.state_mut().run("file.new", json!({"width": 300, "height": 200})).unwrap();
+    assert!(h.state().ui.pen.is_none(), "the Pen draft must not overlay the new document");
+    let docs = h.state().session.documents();
+    assert_eq!(docs.len(), 2);
+    assert_eq!(docs[0].doc.id, original);
+    assert_eq!(docs[0].doc.work_path.as_ref().unwrap().subpaths[0].knots.len(), 2);
+    assert!(docs[1].doc.work_path.is_none(), "the new document starts with no path");
+}
+
+#[test]
 fn dragging_on_the_first_anchor_closes_with_its_handles_in_one_step() {
     let mut h = harness();
     let before = h.state().session.active().unwrap().history.past_len();
@@ -146,8 +163,59 @@ fn dragging_on_the_first_anchor_closes_with_its_handles_in_one_step() {
     click(&mut h, [120.0, 20.0]);
     click(&mut h, [120.0, 100.0]);
     click(&mut h, [20.0, 20.0]);
-    let sp = h.state().session.active().unwrap().doc.work_path.clone().unwrap().subpaths.remove(0);
+    // The second path joins the Work Path as its last subpath (#4721).
+    let subs = h.state().session.active().unwrap().doc.work_path.clone().unwrap().subpaths;
+    assert_eq!(subs.len(), 2, "the first path stays");
+    let sp = subs.last().unwrap();
     let k = &sp.knots[0];
     assert!(sp.closed && sp.knots.len() == 3);
     assert!(near([k.in_ctrl.x, k.in_ctrl.y], [0.0, 20.0]) && near([k.out_ctrl.x, k.out_ctrl.y], [40.0, 20.0]), "{k:?}");
+}
+
+/// #5702: a finished work path showed again whenever the Pen came back, and ⌫ / Delete reached
+/// Edit › Clear (the pixels under it) instead, so the path looked impossible to delete. With the
+/// Pen the key deletes the path, in one undoable step, and leaves the pixels; other tools keep
+/// Edit › Clear.
+#[test]
+fn delete_with_the_pen_deletes_the_finished_work_path_not_the_pixels() {
+    let mut h = harness();
+    h.state_mut().run("layer.new.layer", json!({})).unwrap();
+    h.state_mut()
+        .session
+        .edit("paint", |doc, a| {
+            doc.layer_mut(a.unwrap()).unwrap().surface_mut().unwrap().fill_rect(photocraft_geom::Rect::new(0, 0, 200, 150), &[1.0, 0.0, 0.0, 1.0]);
+            Ok(())
+        })
+        .unwrap();
+    for p in [[20.0, 20.0], [120.0, 20.0], [120.0, 100.0]] {
+        click(&mut h, p);
+    }
+    h.key_press(Key::Enter);
+    h.run_steps(2);
+    let work = |h: &Harness<'static, PhotocraftApp>| h.state().session.active().unwrap().doc.work_path.is_some();
+    let red = |h: &Harness<'static, PhotocraftApp>| {
+        let st = h.state().session.active().unwrap();
+        st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap().rgba(60, 60) == [1.0, 0.0, 0.0, 1.0]
+    };
+    assert!(work(&h) && h.state().ui.pen.is_none(), "a finished work path");
+    let steps = h.state().session.active().unwrap().history.past_len();
+
+    h.key_press(Key::Delete);
+    h.run_steps(2);
+    assert!(!work(&h), "Delete deletes the work path");
+    assert!(red(&h), "and leaves the pixels under it");
+    assert_eq!(h.state().session.active().unwrap().history.past_len(), steps + 1, "one History step");
+    h.state_mut().run("edit.undo", json!({})).unwrap();
+    assert!(work(&h), "Undo brings it back");
+
+    h.state_mut().ui.tool = Tool::PathSelection;
+    h.key_press(Key::Backspace);
+    h.run_steps(2);
+    assert!(!work(&h), "Backspace with Path Selection deletes it too");
+    h.state_mut().run("edit.undo", json!({})).unwrap();
+
+    h.state_mut().ui.tool = Tool::Brush;
+    h.key_press(Key::Delete);
+    h.run_steps(2);
+    assert!(work(&h), "another tool's Delete is Edit › Clear, not Delete Path");
 }

@@ -39,6 +39,7 @@ apps/
   photocraft                 desktop app (eframe/wgpu), TCP control server
   photocraft-cli             headless CLI (convert/info/run/batch/commands/mcp)
   photocraft-web             the same app in the browser (trunk + wasm-bindgen)
+  photocraft-web-boot        starts the packaged browser app from compressed parts of its wasm (no file over a host's size cap)
 xtask/                       cargo xtask layers | wasm | ci | stats | corpus | test-corpus | parity | perf | scorecard
 ```
 
@@ -131,7 +132,6 @@ Then append a terse entry to `log/devlog.md` (what landed, numbers, what's still
 - `../craftrules/release/playbook.md`: how every storytold app builds signed release binaries (the canonical recipe; `docs/release-playbook.md` just points there); `docs/releasing.md` is PhotoCraft's specifics.
 - `plan/` (local, gitignored): research, parity plan, execution plan, estimates.
 - `log/` (local, gitignored): the dev log.
-- 
 
 ## 8. Keeping the native format complete
 

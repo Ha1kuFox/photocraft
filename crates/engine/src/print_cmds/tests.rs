@@ -52,7 +52,7 @@ fn print_dry_run_renders_a_pdf_and_reports_the_platform_backend() {
             assert!(!cmd.contains(&out), "PDF bytes are streamed instead of passing a path");
         }
         #[cfg(windows)]
-        assert!(cmd.last().unwrap().contains("craft-print PDF spooler"));
+        assert_eq!(cmd.first().map(String::as_str), Some("xps-print"));
         assert_eq!(r["sent"], false);
         assert_eq!(r["pdf"], out);
         let pdf = std::fs::read(&out).unwrap();
@@ -151,6 +151,60 @@ fn emulsion_down_mirrors_the_whole_page() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+fn page_of(channels: usize, data: Vec<u8>, emulsion_down: bool) -> PrintPage {
+    PrintPage {
+        paper: (600.0, 800.0),
+        image: PrintImage { width: 2, height: 1, channels, data, icc: None },
+        rect: (100.0, 200.0, 144.0, 72.0),
+        marks: Marks::default(),
+        description: None,
+        label: None,
+        emulsion_down,
+    }
+}
+
+#[test]
+fn windows_print_image_is_rgb_mirrored_for_emulsion_down() {
+    assert_eq!(page_rgb(&page_of(3, vec![1, 2, 3, 4, 5, 6], false)).unwrap(), [1, 2, 3, 4, 5, 6]);
+    assert_eq!(page_rgb(&page_of(3, vec![1, 2, 3, 4, 5, 6], true)).unwrap(), [4, 5, 6, 1, 2, 3]);
+    assert_eq!(page_rgb(&page_of(1, vec![7, 9], true)).unwrap(), [9, 9, 9, 7, 7, 7]);
+    assert!(page_rgb(&page_of(4, vec![0; 8], false)).is_err(), "CMYK can't go to a GDI printer");
+    assert!(page_rgb(&page_of(3, vec![0; 5], false)).is_err(), "short data");
+    // GDI's origin is the sheet's top-left; Emulsion Down moves the box to the mirrored side.
+    assert_eq!(page_rect_top_left(&page_of(3, vec![0; 6], false)), (100.0, 528.0, 144.0, 72.0));
+    assert_eq!(page_rect_top_left(&page_of(3, vec![0; 6], true)), (356.0, 528.0, 144.0, 72.0));
+}
+
+#[test]
+fn native_rgb_route_preserves_pdf_only_color_and_page_content() {
+    let mut page = page_of(3, vec![0; 6], false);
+    assert!(native_rgb_compatible(&page, "printerManages"));
+    page.label = Some("Print Me".into());
+    assert!(!native_rgb_compatible(&page, "printerManages"));
+    page.label = None;
+    page.description = Some("Proof description".into());
+    assert!(!native_rgb_compatible(&page, "printerManages"));
+    page.description = Some(String::new());
+    assert!(native_rgb_compatible(&page, "printerManages"));
+    page.image.icc = Some(vec![1, 2, 3]);
+    assert!(!native_rgb_compatible(&page, "printerManages"), "preserve embedded source ICC in the PDF route");
+    assert!(native_rgb_compatible(&page, "photocraftManages"));
+    assert!(native_rgb_compatible(&page, "photoshopManages"));
+    assert!(!native_rgb_compatible(&page_of(4, vec![0; 8], false), "photocraftManages"));
+    assert!(native_rgb_compatible(&page_of(1, vec![0; 2], false), "noColorManagement"));
+}
+
+#[test]
+fn printer_commands_answer_without_a_document_and_reject_bad_settings() {
+    let mut s = Session::new();
+    let r = s.execute("file.print.printers", json!({})).unwrap();
+    assert_eq!(r["supported"], cfg!(windows));
+    assert!(r["printers"].is_array());
+    assert!(s.execute("file.print.page", json!({"printer": "Anything", "printerSettings": "zz"})).is_err());
+    let mut s = session("rgb", 8);
+    assert!(s.execute("file.print", json!({"printer": "Anything", "printerSettings": "0102", "send": true})).is_err());
+}
+
 #[test]
 fn printer_profile_can_be_an_installed_icc_file() {
     let dir = tmp("icc");
@@ -183,7 +237,7 @@ fn print_one_copy_repeats_the_last_settings() {
     #[cfg(unix)]
     assert_eq!(&cmd[..3], &["lp", "-n", "1"]);
     #[cfg(windows)]
-    assert!(cmd.last().unwrap().contains("craft-print PDF spooler"));
+    assert_eq!(cmd.first().map(String::as_str), Some("xps-print"));
     assert!(r["pdf"].is_null());
 }
 

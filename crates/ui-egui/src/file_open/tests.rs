@@ -464,6 +464,29 @@ fn files_dropped_onto_the_canvas_are_placed_in_free_transform_one_by_one() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// #4833: a file dropped on the canvas on its own while the previous one is still in Free
+/// Transform applies that box and is placed at once, instead of waiting unseen for ↩.
+#[test]
+fn a_separate_drop_applies_the_open_transform_and_places_at_once() {
+    let ctx = egui::Context::default();
+    let mut app = app_with_canvas();
+    let (layers, steps) = (layer_count(&app), history_steps(&app));
+    let at = Some(egui::pos2(400.0, 300.0));
+    app.open_dropped(&ctx, vec![dropped("first.png", Ok(png_bytes(4, 4)))], at);
+    app.place_next_dropped(&ctx);
+    assert!(app.ui.transform.is_some(), "the first file is in Free Transform");
+    app.open_dropped(&ctx, vec![dropped("second.png", Ok(png_bytes(2, 2)))], at);
+    app.place_next_dropped(&ctx);
+    let st = app.session.active().unwrap();
+    assert_eq!(st.doc.layer(st.active_layer.unwrap()).unwrap().name, "second", "placed without waiting for ↩");
+    assert_eq!(app.ui.transform.as_ref().and_then(|t| t.made), Some(crate::state::MadeLayer::Place));
+    // The first place was applied, not taken back: both layers, one Place Embedded step each.
+    assert_eq!(layer_count(&app), layers + 2);
+    assert!(app.drop_places.is_empty());
+    crate::transform_tool::commit(&mut app);
+    assert_eq!(history_steps(&app), steps + 2);
+}
+
 /// #1099: switching tabs after an actual canvas drop cancels the place in its source document.
 #[test]
 fn switching_documents_after_a_canvas_drop_undoes_only_the_place() {
@@ -547,6 +570,29 @@ fn a_drop_slot_counts_documents_not_the_tabs_shown() {
     assert_eq!(strip.slot(130.0), 5);
     assert_eq!(strip.slot(500.0), 7, "past the last shown tab: after it");
     assert_eq!(crate::canvas::TabStrip { rect: strip.rect, tabs: vec![] }.slot(10.0), 0);
+}
+
+/// #5687: files dropped from another app's window bring PhotoCraft to the front (a focus request
+/// in the frame that takes the drop), so the source window ends up behind it.
+#[test]
+fn a_drop_brings_the_window_to_the_front() {
+    let dir = std::env::temp_dir().join(format!("photocraft-drop-focus-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("photo.png");
+    std::fs::write(&file, png_bytes(8, 8)).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(800.0, 600.0)).with_max_steps(8).build_eframe(|cc| {
+        PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+        PhotocraftApp::new(photocraft_engine::Session::new(), Services::default())
+    });
+    h.run_steps(2);
+    let focus = |h: &egui_kittest::Harness<'_, PhotocraftApp>| {
+        h.output().viewport_output.get(&egui::ViewportId::ROOT).is_some_and(|v| v.commands.contains(&egui::ViewportCommand::Focus))
+    };
+    assert!(!focus(&h), "no focus request without a drop");
+    h.input_mut().dropped_files.push(dropped(file, Err("read from the path".into())));
+    h.step();
+    assert!(focus(&h), "the drop brings the window forward");
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// The whole app (eframe harness, real layout): over the tab strip, the pointer read from the OS

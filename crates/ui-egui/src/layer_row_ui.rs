@@ -203,6 +203,16 @@ pub fn panel_menu(app: &mut crate::PhotocraftApp, ui: &mut egui::Ui) {
         }
         ui.close();
     }
+    ui.separator();
+    // Photoshop's Clip Thumbnails to Layer Bounds: frame each layer's pixels, not the canvas (#4281).
+    let mut clip = app.session.prefs().interface.clip_thumbnails_to_layer_bounds;
+    if crate::widgets::checkbox(ui, &mut clip, tl!("Clip Thumbnails to Layer Bounds")).changed() {
+        if let Err(e) = app.run("prefs.set", json!({"path": "interface.clipThumbnailsToLayerBounds", "value": clip})) {
+            app.ui.status = e;
+            app.ui.status_error = true;
+        }
+        ui.close();
+    }
 }
 
 fn rects_id() -> egui::Id {

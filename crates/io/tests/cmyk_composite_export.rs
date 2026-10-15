@@ -233,3 +233,37 @@ fn layered_tiff_keeps_its_existing_cmyk_psd_composite_path() {
     assert_eq!(tag(&result.bytes, 338), Some(2));
     assert!(image.to_normalized().as_chunks::<5>().0.iter().all(|px| (px[4] - 0.5).abs() < 0.0001));
 }
+
+/// A tagged CMYK file's merged image reads through its own profile, as the compositor reads the
+/// layers, so the two are compared in the same colours (the oracle tests rely on it: psd-tools'
+/// tagged CMYK files were 95–100% off before).
+#[test]
+fn merged_composite_of_a_tagged_cmyk_file_reads_through_its_profile() {
+    use photocraft_cms::synth::{CmykParams, cmyk_profile};
+    use photocraft_color::convert::{CmykSpace, cmyk_to_rgb, with_cmyk_space};
+    let mut doc = Document::new("tagged", Size::new(6, 4), ColorMode::Cmyk, SampleType::U8);
+    let profile =
+        cmyk_profile(&CmykParams { description: "Merged Test CMYK".into(), tvi: [0.26, 0.26, 0.26, 0.3], grid_a2b: 5, grid_b2a: 9, ..Default::default() });
+    doc.icc_profile = Some(profile.to_bytes());
+    let mut surface = Surface::new(photocraft_color::PixelFormat::new(ColorMode::Cmyk, SampleType::U8, false));
+    for x in 0..6 {
+        for y in 0..4 {
+            surface.write_pixel(x, y, &[x as f32 / 5.0, y as f32 / 3.0, 0.4, (x * y) as f32 / 15.0]);
+        }
+    }
+    doc.layers.push(Layer::new("Background", LayerContent::Raster(surface)));
+    let psd = export(&doc, "psd", &ExportOptions::default()).unwrap();
+    let file = photocraft_psd::PsdFile::from_bytes(&psd.bytes).unwrap();
+    let merged = photocraft_io::merged_composite(&file).unwrap();
+    // The merged image's own inks (planar, 255 = no ink), shown through the file's profile.
+    let raw = file.decode_merged().unwrap();
+    let plane = 6 * 4;
+    let space = CmykSpace::for_profile(doc.icc_profile.as_ref());
+    assert!(space.is_some(), "a profile other than the built-in coated CMYK");
+    let shown: Vec<[f32; 3]> =
+        with_cmyk_space(space.as_ref(), || (0..plane).map(|i| cmyk_to_rgb(std::array::from_fn(|c| 1.0 - f32::from(raw[c * plane + i]) / 255.0))).collect());
+    let builtin: Vec<[f32; 3]> = (0..plane).map(|i| cmyk_to_rgb(std::array::from_fn(|c| 1.0 - f32::from(raw[c * plane + i]) / 255.0))).collect();
+    let apart = |a: &[[f32; 3]]| merged.iter().zip(a).flat_map(|(m, s)| (0..3).map(move |c| (m[c] - s[c]).abs())).fold(0.0f32, f32::max);
+    assert!(apart(&shown) < 1e-4, "merged image read through its profile: {}", apart(&shown));
+    assert!(apart(&builtin) > 0.01, "the built-in profile would show it differently");
+}

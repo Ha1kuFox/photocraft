@@ -1201,6 +1201,25 @@ mod tests {
         assert_eq!(tr(Lang::EN, "Seafoam"), "Seafoam");
     }
 
+    /// These labels are passed to `tl!` dynamically, so the literal coverage scan misses them.
+    #[test]
+    fn russian_dynamic_selection_theme_and_measurement_labels_are_translated() {
+        let ru = Lang::from_code("ru").expect("ru registered");
+        let (inverse_label, _) =
+            crate::canvas_tool_menu::SELECTION_MENU.iter().flatten().find(|(_, id)| *id == "select.inverse").expect("selection menu has Select Inverse");
+        assert_eq!(tr(ru, inverse_label), "Инвертировать выделение");
+        for kind in [crate::theme::ThemeKind::ProLight, crate::theme::ThemeKind::ProLightGray] {
+            assert!(has(ru, kind.label()), "Russian theme label missing {}", kind.label());
+        }
+        for (_, label) in photocraft_engine::analysis_cmds::COLUMNS {
+            assert!(has(ru, label), "Russian measurement header missing {label}");
+        }
+        assert_eq!(tr(ru, "Pro (Light)"), "Pro (светлая)");
+        assert_eq!(tr(ru, "Pro (Light Gray)"), "Pro (светло-серая)");
+        assert_eq!(tr(ru, "Date and Time"), "Дата и время");
+        assert_eq!(tr(ru, "Integrated Density"), "Интегральная плотность");
+    }
+
     /// Font style labels are built from dynamic words (weights, "Italic"), so the literal
     /// scanner cannot cover them; "Light" there is a weight, distinct from the Camera Raw
     /// "Light" section (`type_tool::style_label`).

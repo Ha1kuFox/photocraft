@@ -29,6 +29,7 @@ pub(crate) fn clone_params(app: &PhotocraftApp) -> Option<Value> {
     let o = &app.ui.tool_options;
     let mut p = json!({"aligned": o.clone_aligned, "sampleLayer": o.clone_sample});
     if app.ui.tool == Tool::CloneStamp {
+        p["wrap"] = json!(app.ui.view.pattern_preview);
         p["opacity"] = json!(app.session.tools.brush.opacity * 100.0);
         p["flow"] = json!(app.session.tools.brush.flow * 100.0);
     }
@@ -690,6 +691,30 @@ mod tests {
     fn stripes(app: &mut PhotocraftApp, step: usize, target: &str) {
         for x in (0..100).step_by(step) {
             app.run("paint.pencil", json!({"points": [[x, 0], [x, 60]], "size": 2, "color": "#606060", "target": target})).unwrap();
+        }
+    }
+
+    #[test]
+    fn clone_stamp_in_pattern_preview_wraps_a_dab_across_the_right_edge() {
+        for pattern_preview in [false, true] {
+            let mut app = app();
+            app.run("paint.pencil", json!({"points": [[10, 10]], "size": 24, "color": "#ff0000"})).unwrap();
+            app.ui.tool = Tool::CloneStamp;
+            app.ui.clone_source = Some([10.0, 10.0]);
+            app.ui.view.pattern_preview = pattern_preview;
+            let modifiers = egui::Modifiers::NONE;
+            tool_event(&mut app, ToolEvent::Down { x: 98.0, y: 30.0, pressure: 1.0 }, modifiers);
+            tool_event(&mut app, ToolEvent::Up { x: 98.0, y: 30.0 }, modifiers);
+            assert!(!app.ui.status_error, "{}", app.ui.status);
+            let surface = active(&app).surface().unwrap();
+            let center = surface.rgba(98, 30);
+            assert!(center[0] > 0.9 && center[1] < 0.1, "clone center: {center:?}");
+            let opposite = surface.rgba(1, 30);
+            if pattern_preview {
+                assert!(opposite[0] > 0.9 && opposite[1] < 0.1, "Pattern Preview must wrap the clone footprint: {opposite:?}");
+            } else {
+                assert!(opposite[0] > 0.9 && opposite[1] > 0.9, "ordinary cloning must not wrap: {opposite:?}");
+            }
         }
     }
 

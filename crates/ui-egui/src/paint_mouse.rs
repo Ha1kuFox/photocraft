@@ -37,6 +37,7 @@ pub fn sync_tool_brush(app: &mut PhotocraftApp) {
     // The picked preset was the outgoing tool's brush: forget it, so Update Brush can't overwrite
     // that preset with this tool's brush.
     app.session.tools.current_preset = None;
+    app.session.tools.brush_changed();
     app.ui.brush_tool = tool;
 }
 

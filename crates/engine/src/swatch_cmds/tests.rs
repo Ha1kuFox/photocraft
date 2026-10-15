@@ -291,6 +291,50 @@ fn library_limits() {
     assert_eq!(g[0].name.chars().count(), MAX_NAME);
 }
 
+/// Groups without a name take the import's group name. The import used to number each repeated
+/// group name by searching the library once for every number it tried, so importing about 10,000
+/// unnamed groups took minutes. The test fails when the import takes more than 20 seconds.
+#[test]
+fn unnamed_groups_are_numbered_in_linear_time() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut s = Session::new();
+        s.execute("swatches.newGroup", json!({"name": "Ink 2"})).unwrap();
+        let n = MAX_GROUPS - s.presets.swatches.len();
+        let paper = AseSwatch { name: "Paper".into(), color: AseColor::Gray(1.0), kind: AseKind::Process };
+        let mut entries = vec![AseEntry::Group { name: String::new(), swatches: Vec::new() }; n];
+        entries[0] = AseEntry::Group { name: String::new(), swatches: vec![paper] };
+        let file = b64_encode(&photocraft_psd::ase::write(&AseFile { entries }).unwrap());
+        let r = s.execute("swatches.import", json!({"data": file, "group": "Ink"})).unwrap();
+        assert_eq!(s.presets.swatches.len(), MAX_GROUPS);
+        let names: Vec<String> = r["groups"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
+        let _ = tx.send(names);
+    });
+    let names = match rx.recv_timeout(std::time::Duration::from_secs(20)) {
+        Ok(names) => names,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => panic!("importing the groups did not finish"),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => panic!("the import thread panicked"),
+    };
+    // Numbering starts at 1 and skips the number the library already uses.
+    assert_eq!(names[..4], ["Ink", "Ink 1", "Ink 3", "Ink 4"]);
+    assert_eq!(names.last(), Some(&format!("Ink {}", names.len())));
+    assert_eq!(names.iter().collect::<std::collections::HashSet<_>>().len(), names.len());
+}
+
+#[test]
+fn repeated_group_names_take_the_first_free_number() {
+    let mut s = Session::new();
+    for name in ["Brand", "Brand 2"] {
+        s.execute("swatches.newGroup", json!({"name": name})).unwrap();
+    }
+    let paper = AseSwatch { name: "Paper".into(), color: AseColor::Gray(1.0), kind: AseKind::Process };
+    let entries = ["Brand", "Brand", "Brand", "Brand 1"].into_iter().map(|name| AseEntry::Group { name: name.into(), swatches: vec![paper.clone()] }).collect();
+    let file = b64_encode(&photocraft_psd::ase::write(&AseFile { entries }).unwrap());
+    let r = s.execute("swatches.import", json!({"data": file})).unwrap();
+    // The file's "Brand 1" comes after the first "Brand" took that name.
+    assert_eq!(r["groups"], json!(["Brand 1", "Brand 3", "Brand 4", "Brand 1 1"]));
+}
+
 /// A value beyond f32 range used to pass the finite check, become inf as f32 and wrap to a NaN
 /// hue, which the prefs file stores as `null`; the next launch then dropped every saved preset.
 #[test]

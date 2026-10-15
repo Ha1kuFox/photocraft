@@ -52,7 +52,22 @@ fn preserve(p: &Value) -> Preserve {
 fn preset(id: &str) -> Option<(&'static str, FilterParams)> {
     Some(match id {
         "filter.blur.blur" => ("Blur", FilterParams::GaussianBlur { radius: 0.6 }),
-        "filter.blur.blurMore" => ("Blur More", FilterParams::GaussianBlur { radius: 1.4 }),
+        // Photoshop 27.11's Blur More is the 3×3 kernel [1 2 1; 2 2 2; 1 2 1] / 14 (its response
+        // to a single white pixel, exactly).
+        "filter.blur.blurMore" => (
+            "Blur More",
+            FilterParams::Custom {
+                kernel: vec![
+                    0.0, 0.0, 0.0, 0.0, 0.0, //
+                    0.0, 1.0, 2.0, 1.0, 0.0, //
+                    0.0, 2.0, 2.0, 2.0, 0.0, //
+                    0.0, 1.0, 2.0, 1.0, 0.0, //
+                    0.0, 0.0, 0.0, 0.0, 0.0,
+                ],
+                scale: 14.0,
+                offset: 0.0,
+            },
+        ),
         "filter.sharpen.sharpen" => ("Sharpen", FilterParams::UnsharpMask { amount: 60.0, radius: 0.5, threshold: 0.0 }),
         "filter.sharpen.sharpenMore" => ("Sharpen More", FilterParams::UnsharpMask { amount: 150.0, radius: 0.6, threshold: 0.0 }),
         "filter.sharpen.sharpenEdges" => ("Sharpen Edges", FilterParams::UnsharpMask { amount: 100.0, radius: 0.8, threshold: 6.0 }),
@@ -445,7 +460,6 @@ mod tests {
         if reveal_selection {
             s.execute("select.all", json!({})).unwrap();
             s.execute("layer.layerMask.revealSelection", json!({})).unwrap();
-            s.execute("select.deselect", json!({})).unwrap();
         } else {
             s.execute("layer.layerMask.revealAll", json!({})).unwrap();
         }

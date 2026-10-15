@@ -363,6 +363,7 @@
 	Update Modified Content	Değiştirilen İçeriği Güncelle
 	Update All Modified Content	Değiştirilen Tüm İçeriği Güncelle
 	Stack Mode	Yığın Modu
+	Choose Stack Mode:	Yığın Modunu Seçin:
 	Entropy	Entropi
 	Kurtosis	Basıklık
 	Maximum	Maksimum
@@ -531,6 +532,11 @@
 	Blur	Bulanıklaştırma
 	Blur Gallery	Bulanıklaştırma Galerisi
 	Field Blur…	Alan Bulanıklığı…
+	No pin selected	Seçili pim yok
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Pim eklemek için görüntüye tıklayın; taşımak için pimi, bulanıklığını değiştirmek için halkasını sürükleyin. Delete seçili pimi siler.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Yeniden boyutlandırmak ve döndürmek için dış çizgideki tutamaçları, köşeleri yuvarlamak için kareyi, bulanıklığın nerede başlayacağını belirlemek için içerideki noktaları sürükleyin.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Bandı taşımak için pimi, bulanıklığını değiştirmek için halkasını sürükleyin. Keskin bandı genişletmek için düz çizgileri, geçişi ayarlamak için kesikli çizgileri, döndürmek için noktaları sürükleyin.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Yeniden boyutlandırmak ve döndürmek için dış çizgideki tutamaçları sürükleyin; halka bulanıklık açısını belirler.
 	Iris Blur…	İris Bulanıklığı…
 	Tilt-Shift…	Tilt-Shift…
 	Path Blur…	Yol Bulanıklığı…
@@ -843,6 +849,7 @@
 	Background	Arka plan
 	Background Color	Arka Plan Rengi
 	Background Contents	Arka Plan İçeriği
+	Custom background color	Özel Arka Plan Rengi
 	Balance	Bakiye
 	Baseline	Temel
 	Baseline shift	Taban çizgisi kayması
@@ -944,7 +951,6 @@
 	Contiguous	Bitişik
 	Contrast	Kontrast
 	Control:	Kontrol:
-	Convert document's colors to the working space	Belgenin renklerini çalışma alanına dönüştürün
 	Convert to sRGB	sRGB'ye dönüştür
 	Copies	Kopyalar
 	Copper	Bakır
@@ -1002,6 +1008,7 @@
 	Delete Layer Mask	Katman Maskesini Sil
 	Delete Layers	Katmanları Sil
 	Delete Shortcut	Kısayolu Sil
+	Add Shortcut	Kısayol Ekle
 	Delete Timeline	Zaman Çizelgesini Sil
 	Delete Tool Preset	Araç Ön Ayarını Sil
 	Delete count group	Sayım grubunu sil
@@ -1526,7 +1533,6 @@
 	Use Default	Varsayılanı Kullan
 	Use Legacy	Eskiyi Kullan
 	Use Measurement Scale	Ölçüm Ölçeğini Kullan
-	Use the embedded profile (instead of the working space)	Gömülü profili kullanın (çalışma alanı yerine)
 	Variables bind a layer's visibility, text or pixels to a named data slot.	Değişkenler bir katmanın görünürlüğünü, metnini veya piksellerini adlandırılmış bir veri yuvasına bağlar.
 	Vertical scale	Dikey ölçek
 	Vibrance	Canlılık
@@ -1846,6 +1852,8 @@
 	Camera Raw Defaults	Camera Raw Varsayılanları
 	Canvas border	Kanvas kenarlığı
 	Show canvas dots	Kanvas noktalarını göster
+	Clip thumbnails to layer bounds	Küçük resimleri katman sınırlarına kırp
+	Clip Thumbnails to Layer Bounds	Küçük resimleri katman sınırlarına kırp
 	Canvas color	Kanvas rengi
 	Canvas custom color	Kanvas özel rengi
 	Color picker	Renk seçici
@@ -2139,6 +2147,9 @@
 	No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.	Seçim yapılabilecek yol yok: Kalem aracıyla bir yol çizin veya Yollar panelinden birini seçin.
 	Cancel opening	Açılışı iptal et
 	Cancelled opening {name}	{name} açılışı iptal edildi
+	The document “{name}” does not have an embedded {mode} profile.	'{name}' belgesinde gömülü bir {mode} profili yok.
+	The document “{name}” has an embedded color profile that does not match the current {mode} working space.	'{name}' belgesinin gömülü renk profili geçerli {mode} çalışma alanıyla eşleşmiyor.
+	Working: {working}	Çalışma alanı: {working}
 	Developing {name}	{name} geliştiriliyor
 	Cancelled {label}	{label} iptal edildi
 	Esc to cancel	İptal etmek için Esc
@@ -3290,6 +3301,7 @@ cameraRaw	Color	Renk
 	Compose	Oluştur
 	Condensed	Yoğunlaştırılmış
 	Conditional Mode Change	Koşullu Mod Değişikliği
+	Background (Default)	Arka plan (varsayılan)
 	Content-Aware Fill	İçeriğe Uygun Dolgu
 	Convert Frames > Video Layers	Çerçeveleri Dönüştür > Video Katmanları
 	Convert to Linked	Bağlantılıya Dönüştür
@@ -3359,6 +3371,7 @@ cameraRaw	Color	Renk
 	How often fastening points are placed by themselves	Sabitleme noktalarının kendi başlarına ne sıklıkla yerleştirildiği
 	ISO Speed	ISO Hızı
 	Image Processor	Görüntü İşlemcisi
+	Include All Subfolders	Tüm Alt Klasörleri Dahil Et
 	In	içinde
 	Install Plug-in	Eklentiyi Yükle
 	Interpret Footage	Görüntüyü Yorumlama
@@ -3643,7 +3656,10 @@ cameraRaw	Whites	Beyazlar
 	Color Picker (Layer Style Color)	Renk Seçici (Katman Stili Rengi)
 	Auto Hide Notifications	Bildirimleri Otomatik Gizle
 	Notification Duration (seconds)	Bildirim Süresi (saniye)
+	Bundle Arrow-Key Nudges	Ok tuşlarıyla kaydırmaları birleştir
+	Nudge Bundle Pause (ms)	Kaydırma birleştirme duraklaması (ms)
 	Appearance Mode	Görünüm Modu
+	Presentation	Sunum
 	Next Appearance Mode	Sonraki Görünüm Modu
 	Sync with system	Sistemle senkronizasyon
 	Active	Aktif
@@ -3823,6 +3839,8 @@ cameraData	Lens	Lens
 @plural	{n} step|{n} steps	{n} adım
 @plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} fırça ön ayarı uyarısı daha)
 @plural	{what} with {n} warning|{what} with {n} warnings	{what}, {n} uyarı ile
+	Response curve	Yanıt eğrisi
+	Show home recent files	Ana ekranda son dosyaları göster
 	Clear Brush Controls	Fırça Denetimlerini Temizle
 	Reset All Locked Settings	Tüm Kilitli Ayarları Sıfırla
 	Copy Texture to Other Tools	Dokuyu Diğer Araçlara Kopyala
@@ -3837,6 +3855,7 @@ cameraData	Lens	Lens
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	{n} eylem {file} dosyasına kaydedildi
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	Photoshop karşılığı olmayan {n} adım atlandı
 
+	Starting serial	Başlangıç sıra numarası
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Durdurma Ekle…
 	Save Set…	Seti Kaydet…
@@ -3860,6 +3879,13 @@ cameraData	Lens	Lens
 	Loaded Camera Raw settings from {file}	Camera Raw ayarları {file} dosyasından yüklendi
 	Loaded Camera Raw settings from {file} ({n} not supported)	Camera Raw ayarları {file} dosyasından yüklendi ({n} desteklenmiyor)
 	Auto Add/Delete	Otomatik Ekle/Sil
+
+# Native Windows printing qualification
+	Don't also tick Mirror Image in Print Settings…: the two flips cancel out.	Yazdırma Ayarlarında ayrıca Ayna Görüntüsünü açmayın: iki yansıtma birbirini iptal eder.
+	Print Settings…	Yazdırma Ayarları…
+	Remember to turn off the printer's own colour management in Print Settings…	Yazdırma Ayarlarında yazıcının kendi renk yönetimini kapatmayı unutmayın…
+	Sent to {printer}	{printer} yazıcısına gönderildi
+	set in Print Settings…	Yazdırma Ayarlarında belirlenir…
 	ICO is limited to 256 × 256 pixels	ICO 256 × 256 piksel ile sınırlıdır
 
 # Channel Options and New Spot Channel (#3761)
@@ -3867,3 +3893,38 @@ cameraData	Lens	Lens
 	Color Indicates:	Rengin Gösterdiği:
 	Ink Characteristics	Mürekkep Özellikleri
 	Solidity:	Doluluk:
+	Redrawing	Yeniden çiziliyor
+# Embedded Profile Mismatch: profile names beside the choices, Remember this choice
+	Use the embedded profile ({profile})	Gömülü profili kullanın ({profile})
+	Convert to the working space ({profile})	Çalışma alanına dönüştürün ({profile})
+	Remember this choice for future images	Bu seçimi sonraki görüntüler için hatırla
+	Turn the prompt back on with Ask On Mismatch in Edit › Color Settings.	Soruyu Düzen › Renk Ayarları'ndaki Ask On Mismatch ile yeniden açabilirsiniz.
+	Button Mode	Düğme modu
+	Button Mode On	Düğme modu açık
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Arayüzü koyulaştır
+	Lighten Interface	Arayüzü açıklaştır
+# Bevel & Emboss Technique.
+	Technique	Teknik
+	Chisel Hard	Sert Keski
+	Chisel Soft	Yumuşak Keski
+	Open color-less EXR as ACEScg	Renk bilgisi olmayan EXR'yi ACEScg olarak aç
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	Seçili Kılavuzları Düzenle
+	Clear Selected Guides	Seçili Kılavuzları Temizle
+	Delete this set	Bu Kümeyi Sil
+	New Set…	Yeni Küme…
+	PhotoCraft Defaults	PhotoCraft Varsayılanları
+	Save a list of these shortcuts as a web page	Bu kısayolların listesini web sayfası olarak kaydet
+	Save the changes to this set	Bu kümedeki değişiklikleri kaydet
+	Save these shortcuts as a .kys file	Bu kısayolları .kys dosyası olarak kaydet
+	Save these shortcuts as a new set	Bu kısayolları yeni bir küme olarak kaydet
+	Set deleted.	Küme silindi.
+	Set saved.	Küme kaydedildi.
+	Set:	Küme:
+	Summarize…	Özetle…
+	There are too many sets: delete one first.	Çok fazla küme var: önce birini silin.
+	set name	küme adı
+	{set} (modified)	{set} (değiştirildi)

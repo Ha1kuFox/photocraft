@@ -385,6 +385,7 @@
 	Smart Objects	Đối tượng thông minh
 	Solid Color…	Màu đặc…
 	Stack Mode	Chế độ chồng
+	Choose Stack Mode:	Chọn chế độ chồng:
 	Standard Deviation	Độ lệch chuẩn
 	Subtract Front Shape	Trừ hình phía trước
 	Summation	Tổng
@@ -507,6 +508,12 @@
 	Facet	Mặt cắt
 	Fibers…	Sợi…
 	Field Blur…	Làm mờ vùng…
+# Field Blur pins (#3373)
+	No pin selected	Chưa chọn ghim nào
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Bấm vào ảnh để thêm ghim; kéo ghim để di chuyển, hoặc kéo vòng của ghim để đổi độ mờ. Delete xóa ghim đã chọn.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Kéo các tay nắm trên đường viền để đổi kích thước và xoay, kéo ô vuông để bo tròn góc, và kéo các chấm bên trong để đặt nơi bắt đầu làm mờ.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Kéo ghim để di chuyển dải, hoặc kéo vòng của ghim để đổi độ mờ. Kéo các đường liền để nới rộng dải sắc nét, các đường nét đứt để đặt vùng chuyển tiếp, và các chấm để xoay dải.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Kéo các tay nắm trên đường viền để đổi kích thước và xoay; vòng tròn đặt góc làm mờ.
 	Filter Gallery…	Thư viện bộ lọc…
 	Find Edges	Tìm cạnh
 	Flame…	Ngọn lửa…
@@ -1568,6 +1575,9 @@ cameraRaw	Shadows	Vùng tối
 	Esc to cancel	Esc để hủy
 	Cancel opening	Hủy mở tệp
 	Cancelled opening {name}	Đã hủy mở {name}
+	The document “{name}” does not have an embedded {mode} profile.	Tài liệu “{name}” không có hồ sơ {mode} nhúng.
+	The document “{name}” has an embedded color profile that does not match the current {mode} working space.	Tài liệu “{name}” có hồ sơ màu nhúng không khớp với không gian làm việc {mode} hiện tại.
+	Working: {working}	Không gian làm việc: {working}
 	Cancelled {label}	Đã hủy {label}
 	Cancel transform (Esc)	Hủy biến đổi (Esc)
 	Cancel warp (Esc)	Hủy biến dạng (Esc)
@@ -1579,8 +1589,6 @@ cameraRaw	Shadows	Vùng tối
 	Embedded Profile Mismatch	Hồ sơ nhúng không khớp
 	Assign working space	Gán không gian làm việc
 	Leave as is (don't color manage)	Giữ nguyên (không quản lý màu)
-	Use the embedded profile (instead of the working space)	Dùng hồ sơ nhúng (thay vì không gian làm việc)
-	Convert document's colors to the working space	Chuyển màu tài liệu sang không gian làm việc
 	Discard the embedded profile (don't color manage)	Bỏ hồ sơ nhúng (không quản lý màu)
 	Native file drag-and-drop is unavailable	Kéo thả tệp gốc không khả dụng
 	Native file drag-and-drop is not supported on Wayland yet. Use File › Open, or run PhotoCraft under XWayland with `WAYLAND_DISPLAY= photocraft`.	Kéo thả tệp gốc chưa được hỗ trợ trên Wayland. Dùng Tệp › Mở, hoặc chạy PhotoCraft dưới XWayland với `WAYLAND_DISPLAY= photocraft`.
@@ -1738,6 +1746,7 @@ cameraRaw	Size	Kích thước
 	Resolution:	Độ phân giải:
 	Color Mode	Chế độ màu
 	Background Contents	Nội dung nền
+	Custom background color	Màu nền tùy chỉnh
 	Pixels/Inch	Pixel/inch
 	Pixels/Centimeter	Pixel/centimet
 	White	Trắng
@@ -2157,6 +2166,7 @@ layers	Fill:	Độ tô:
 	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	Các lớp không vừa ngân sách bộ nhớ GPU. Tăng mức sử dụng bộ nhớ trong Tùy chọn › Hiệu năng sẽ nâng ngân sách, tối đa một phần tư bộ nhớ máy này.
 	Labels	Nhãn
 	Large document: redrawing on the CPU	Tài liệu lớn: đang vẽ lại trên CPU
+	Redrawing	Đang vẽ lại
 	Layer deleted, but confirmation preference could not be saved: {error}	Đã xóa lớp, nhưng không lưu được tùy chọn xác nhận: {error}
 	Layer From Background…	Lớp từ nền…
 	Load a keyboard shortcut set saved as .kys	Tải bộ phím tắt đã lưu dạng .kys
@@ -2663,6 +2673,8 @@ shape	Appearance	Diện mạo
 	Brush preview color	Màu xem trước cọ
 	Cache levels	Mức bộ nhớ đệm
 	Show canvas dots	Hiện chấm vùng vẽ
+	Clip thumbnails to layer bounds	Cắt hình thu nhỏ theo biên của lớp
+	Clip Thumbnails to Layer Bounds	Cắt hình thu nhỏ theo biên của lớp
 	Color picker	Bộ chọn màu
 	Color space	Không gian màu
 	Column width	Độ rộng cột
@@ -2803,6 +2815,8 @@ fontWeight	Italic	Nghiêng
 	Never Show Overlay	Không bao giờ hiện lớp phủ
 	Auto Hide Notifications	Tự động ẩn thông báo
 	Notification Duration (seconds)	Thời lượng thông báo (giây)
+	Bundle Arrow-Key Nudges	Gộp dịch chuyển bằng phím mũi tên
+	Nudge Bundle Pause (ms)	Thời gian chờ gộp dịch chuyển (ms)
 	Dark Theme	Giao diện tối
 	Light Theme	Giao diện sáng
 	Pro Medium	Pro trung bình
@@ -3586,11 +3600,14 @@ curves	Smooth	Làm mượt
 	Stroke Path…	Đi nét đường dẫn…
 	Apply mask to layer before removing?	Áp dụng mặt nạ vào lớp trước khi xóa?
 	Delete the vector mask?	Xóa mặt nạ vectơ?
+	Add Shortcut	Thêm phím tắt
+	Response curve	Đường cong phản hồi
 	Object Finder	Trình tìm đối tượng
 	No object found there — drag a rectangle around it	Không tìm thấy đối tượng ở đó — hãy kéo một hình chữ nhật quanh nó
 	Remove after each stroke	Xóa sau mỗi nét vẽ
 	Apply the removal ({key})	Áp dụng việc xóa ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Nét vẽ cần xóa: {n} (Enter áp dụng, Esc hủy)
+	Show home recent files	Hiện tệp gần đây trên màn hình chính
 	Clear Brush Controls	Xóa điều khiển cọ
 	Reset All Locked Settings	Đặt lại tất cả cài đặt đã khóa
 	Copy Texture to Other Tools	Sao chép họa tiết sang các công cụ khác
@@ -3605,6 +3622,8 @@ curves	Smooth	Làm mượt
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	Đã lưu {n} hành động vào {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	Đã bỏ qua {n} bước không có chức năng tương ứng trong Photoshop
 
+	File Naming	Đặt tên tệp
+	Starting serial	Số thứ tự bắt đầu
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Chèn điểm dừng…
 	Save Set…	Lưu bộ…
@@ -3615,8 +3634,53 @@ curves	Smooth	Làm mượt
 	Action playback stopped	Đã dừng phát hành động
 	Step {step} is waiting for its dialog	Bước {step} đang chờ hộp thoại của nó
 @plural	{n} action|{n} actions	{n} hành động
+	Background (Default)	Nền (mặc định)
+	Presentation	Trình bày
+# Batch / Image Processor
+	Include All Subfolders	Bao gồm tất cả thư mục con
 	Gradient Preset Options	Tùy chọn thiết lập sẵn chuyển sắc
 	Import .GRD	Nhập .GRD
 	Choose a gradient file (.grd).	Chọn tệp chuyển sắc (.grd).
 	Auto Add/Delete	Tự động thêm/xóa
+
+# Native Windows printing qualification
+	Don't also tick Mirror Image in Print Settings…: the two flips cancel out.	Đừng bật thêm Ảnh phản chiếu trong thiết lập in: hai lần lật sẽ triệt tiêu nhau.
+	Print Settings…	Thiết lập in…
+	Remember to turn off the printer's own colour management in Print Settings…	Nhớ tắt quản lý màu riêng của máy in trong thiết lập in…
+	Sent to {printer}	Đã gửi tới {printer}
+	set in Print Settings…	đặt trong thiết lập in…
 	ICO is limited to 256 × 256 pixels	ICO giới hạn ở 256 × 256 pixel
+# Embedded Profile Mismatch: profile names beside the choices, Remember this choice
+	Use the embedded profile ({profile})	Dùng hồ sơ nhúng ({profile})
+	Convert to the working space ({profile})	Chuyển sang không gian làm việc ({profile})
+	Remember this choice for future images	Ghi nhớ lựa chọn này cho các ảnh sau
+	Turn the prompt back on with Ask On Mismatch in Edit › Color Settings.	Bật lại câu hỏi bằng Ask On Mismatch trong Chỉnh sửa › Cài đặt màu.
+	Button Mode	Chế độ nút
+	Button Mode On	Chế độ nút bật
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Làm tối giao diện
+	Lighten Interface	Làm sáng giao diện
+# Bevel & Emboss Technique.
+	Technique	Kỹ thuật
+	Chisel Hard	Đục cứng
+	Chisel Soft	Đục mềm
+	Open color-less EXR as ACEScg	Mở EXR không khai báo màu sắc dưới dạng ACEScg
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	Sửa đường căn đã chọn
+	Clear Selected Guides	Xóa đường căn đã chọn
+	Delete this set	Xóa bộ này
+	New Set…	Bộ mới…
+	PhotoCraft Defaults	Mặc định của PhotoCraft
+	Save a list of these shortcuts as a web page	Lưu danh sách các phím tắt này thành trang web
+	Save the changes to this set	Lưu thay đổi vào bộ này
+	Save these shortcuts as a .kys file	Lưu các phím tắt này thành tệp .kys
+	Save these shortcuts as a new set	Lưu các phím tắt này thành bộ mới
+	Set deleted.	Đã xóa bộ.
+	Set saved.	Đã lưu bộ.
+	Set:	Bộ:
+	Summarize…	Tóm tắt…
+	There are too many sets: delete one first.	Có quá nhiều bộ: hãy xóa một bộ trước.
+	set name	tên bộ
+	{set} (modified)	{set} (đã sửa đổi)

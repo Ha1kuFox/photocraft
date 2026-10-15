@@ -92,7 +92,7 @@ impl TextEngine {
             acc += r.len;
             at < acc
         })?;
-        let em = style_run.style.size_pt * if dpi > 0.0 { dpi / 72.0 } else { 1.0 };
+        let em = style_run.style.size_pt * if dpi.is_finite() && dpi > 0.0 { dpi / 72.0 } else { 1.0 };
         if em.is_nan() || em <= 0.0 {
             return None;
         }

@@ -100,6 +100,24 @@ fn indexed_bmp_opens_with_its_color_table() {
     assert!((px[2] - 50.0 / 255.0).abs() < 1e-6);
 }
 
+/// A palette PNG opens in Indexed Color mode with its whole colour table and its transparent
+/// entry, as in Photoshop (#4804).
+#[test]
+fn indexed_png_opens_with_its_color_table() {
+    let pal = [[10, 20, 30], [200, 100, 50], [7, 8, 9], [0, 255, 0]];
+    let png = photocraft_codecs::encode_png_indexed(2, 2, &[1, 0, 2, 1], &pal, Some(2), None).unwrap();
+    let doc = import("indexed.png", &png).unwrap().document;
+    assert_eq!(doc.mode, ColorMode::Indexed);
+    assert_eq!(doc.depth, SampleType::U8);
+    let table = doc.color_table.as_ref().unwrap();
+    assert_eq!(table.colors, pal, "every entry, used or not");
+    assert_eq!(table.transparent, Some(2));
+    let s = doc.layers[0].surface().unwrap();
+    let px = s.rgba(0, 0);
+    assert!((px[0] - 200.0 / 255.0).abs() < 1e-6 && (px[3] - 1.0).abs() < 1e-6);
+    assert_eq!(s.rgba(0, 1)[3], 0.0, "the tRNS entry is transparent");
+}
+
 /// FITS header cards travel as the document's text metadata, so an astro frame keeps its
 /// OBJECT, EXPTIME and the rest through an edit.
 #[test]
@@ -962,4 +980,39 @@ fn tga_default_bits_follow_the_alpha_channels() {
     assert_eq!(tga_default_bits(&spot), TgaBits::Bits24, "spot channel");
     assert_eq!(tga_default_bits(&with_alpha_channel(d, "Alpha 1")), TgaBits::Bits32);
     assert_eq!((TgaBits::from_bits(24), TgaBits::from_bits(32), TgaBits::from_bits(16)), (Some(TgaBits::Bits24), Some(TgaBits::Bits32), None));
+}
+
+#[test]
+fn a_lab_document_is_written_as_a_lab_tiff_and_opens_as_lab() {
+    // #4936: TIFF stores CIE L*a*b* (CIELab): a Lab document with one layer keeps its pixels.
+    for depth in [SampleType::U8, SampleType::U16] {
+        let d = single(ColorMode::Lab, depth, false);
+        let r = export(&d, "tif", &ExportOptions::default()).unwrap();
+        assert!(r.warnings.iter().all(|w| !w.contains("sRGB") && !w.contains("flattened")), "{depth:?}: {:?}", r.warnings);
+        let back = import("x.tif", &r.bytes).unwrap().document;
+        assert_eq!((back.mode, back.depth), (ColorMode::Lab, depth));
+        pixels_eq(&d, &back, if depth == SampleType::U8 { 0.0 } else { 1.5 / 65535.0 });
+    }
+    // Other formats still go through sRGB.
+    let r = export(&single(ColorMode::Lab, SampleType::U8, false), "png", &ExportOptions::default()).unwrap();
+    assert!(r.warnings.iter().any(|w| w.contains("sRGB")), "{:?}", r.warnings);
+}
+
+#[test]
+fn a_lab_document_with_one_layer_is_not_reported_as_flattened() {
+    // A lone layer loses nothing: TIFF keeps it as Lab, the others go through the sRGB composite.
+    let d = single(ColorMode::Lab, SampleType::U8, false);
+    for ext in ["tif", "png", "jpg"] {
+        let r = export(&d, ext, &ExportOptions::default()).unwrap();
+        assert!(r.warnings.iter().all(|w| !w.contains("flattened")), "{ext}: {:?}", r.warnings);
+        if ext != "tif" {
+            assert!(r.warnings.iter().any(|w| w.contains("Lab composite written as sRGB")), "{ext}: {:?}", r.warnings);
+        }
+    }
+    // Two layers are flattened, and say so.
+    let mut two = single(ColorMode::Lab, SampleType::U8, false);
+    let fmt = two.pixel_format();
+    two.layers.push(raster("Top", fmt, two.bounds(), 5, true));
+    let r = export(&two, "tif", &ExportOptions::default()).unwrap();
+    assert!(r.warnings.iter().any(|w| w.contains("2 layer(s) flattened")), "{:?}", r.warnings);
 }

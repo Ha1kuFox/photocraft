@@ -565,6 +565,87 @@ fn select_subject_finds_centred_object() {
     assert!(v > 0.9, "IoU {v}");
 }
 
+/// Counts full-resolution reads; the working copy goes through `rgb_scaled` uncounted, so each
+/// read is one band tile of the full-resolution re-cut.
+struct TileReads<'a>(ImageSampler<'a>, std::sync::atomic::AtomicUsize);
+
+impl Sampler for TileReads<'_> {
+    fn rgba(&self, r: Rect) -> Vec<[f32; 4]> {
+        self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.0.rgba(r)
+    }
+    fn rgb_scaled(&self, r: Rect, step: usize) -> RgbImage {
+        self.0.rgb_scaled(r, step)
+    }
+}
+
+#[test]
+fn finish_region_cancel_stops_inside_the_band_cut() {
+    use photocraft_raster::{Cancelled, Interrupt};
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    // One 180-pixel window is one band tile, and nothing asks after the band re-cut, so a cancel
+    // seen after the tile's own check can only have been seen inside its min cut.
+    let (n, step) = (180, 3);
+    let (img, truth) = disc_scene(n, n, 90.0, 90.0, 55.0, 4);
+    let s = ImageSampler { img: &img, origin: (0, 0) };
+    let ln = n / step;
+    let low: Vec<bool> = (0..ln * ln).map(|i| truth[((i / ln) * step + 1) * n + (i % ln) * step + 1]).collect();
+    let (fs, bs): (Vec<_>, Vec<_>) = img.px.iter().zip(&truth).partition(|(_, t)| **t);
+    let fit = |v: Vec<(&[f32; 3], &bool)>| Gmm::fit(&v.iter().map(|(p, _)| **p).collect::<Vec<_>>(), 5, gmm::DEFAULT_REG).unwrap();
+    let (fg, bg) = (fit(fs), fit(bs));
+    let window = Rect::new(0, 0, n as i32, n as i32);
+    let polls = AtomicUsize::new(0);
+    let finish = |cancel_from: usize| {
+        polls.store(0, SeqCst);
+        let cancel = || polls.fetch_add(1, SeqCst) + 1 >= cancel_from;
+        finish_region_with(&s, window, step, &low, ln, ln, Some((&fg, &bg)), &Interrupt::cancel_only(&cancel))
+    };
+    let reg = finish(usize::MAX).unwrap().unwrap();
+    assert!(polls.load(SeqCst) >= 2, "the cut polls too ({} polls)", polls.load(SeqCst));
+    assert!(iou(&reg, &truth, n, n) > 0.95);
+    assert_eq!(finish_region(&s, window, step, &low, ln, ln, Some((&fg, &bg))), Some(reg));
+    // Cancelled at the cut's first poll (the second in all): no region.
+    assert_eq!(finish(2), Err(Cancelled));
+    assert_eq!(polls.load(SeqCst), 2);
+    assert_eq!(finish(1), Err(Cancelled), "cancelled before the tile");
+}
+
+#[test]
+fn select_subject_cancelled_in_the_band_recut_reads_no_more_tiles() {
+    use photocraft_raster::{Cancelled, Interrupt};
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    let (w, h) = (3000, 2000);
+    let (img, truth) = disc_scene(w, h, 1500.0, 1000.0, 700.0, 6);
+    let canvas = Rect::new(0, 0, w as i32, h as i32);
+    let sampler = || TileReads(ImageSampler { img: &img, origin: (0, 0) }, AtomicUsize::new(0));
+
+    // Not cancelled: the same region as `select_subject`, and the band cuts themselves ask
+    // (more polls once tiles are read than the one check before each tile).
+    let s = sampler();
+    let band_polls = AtomicUsize::new(0);
+    let count = || {
+        if s.1.load(SeqCst) > 0 {
+            band_polls.fetch_add(1, SeqCst);
+        }
+        false
+    };
+    let reg = subject::select_subject_with(&s, canvas, &Interrupt::cancel_only(&count)).unwrap().unwrap();
+    let tiles = s.1.load(SeqCst);
+    assert!(tiles > 4, "{tiles} band tiles");
+    assert!(band_polls.load(SeqCst) > tiles, "{} polls over {tiles} tiles", band_polls.load(SeqCst));
+    assert!(iou(&reg, &truth, w, h) > 0.9);
+    assert_eq!(subject::select_subject(&sampler(), canvas), Some(reg));
+
+    // Cancelled once the first tile is read: the run stops there instead of re-cutting every
+    // tile. One thread, so no other tile is already in flight.
+    let s = sampler();
+    let cancel = || s.1.load(SeqCst) > 0;
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+    let r = pool.install(|| subject::select_subject_with(&s, canvas, &Interrupt::cancel_only(&cancel)));
+    assert_eq!(r, Err(Cancelled));
+    assert_eq!(s.1.load(SeqCst), 1, "tiles read after the cancel");
+}
+
 #[test]
 fn saliency_highlights_the_object() {
     let (img, truth) = disc_scene(120, 90, 60.0, 45.0, 22.0, 8);
@@ -679,4 +760,155 @@ fn object_at_on_the_background_or_off_canvas_finds_nothing() {
     assert!(grabcut::object_at(&s, canvas, -5.0, 10.0, 20_000).is_none());
     assert!(grabcut::object_at(&s, canvas, f32::NAN, 10.0, 20_000).is_none());
     assert!(grabcut::object_at(&s, canvas, 400.0, 10.0, 0).is_none());
+}
+
+// ---------- Select Subject on the cases reported in #2788 ----------
+
+/// A figure whose upper part is close to the background colour (a cream shirt on a near-white
+/// backdrop): the whole figure is the subject. Returns (image, truth, the low-contrast part).
+pub(crate) fn low_contrast_figure(seed: u64) -> (RgbImage, Vec<bool>, Vec<bool>) {
+    let (w, h) = (240usize, 200usize);
+    let mut rng = Rng::new(seed);
+    let mut img = RgbImage::new(w, h);
+    let mut truth = vec![false; w * h];
+    let mut cream = vec![false; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let body = (90..150).contains(&x) && (70..190).contains(&y);
+            let shoulders = (80..160).contains(&x) && (40..70).contains(&y);
+            let print = (105..135).contains(&x) && (100..130).contains(&y);
+            let n = 0.012 * rng.normal();
+            let i = y * w + x;
+            truth[i] = body || shoulders;
+            cream[i] = shoulders;
+            img.px[i] = if print {
+                [0.9 + n, 0.15 + n, 0.1 + n]
+            } else if body {
+                [0.12 + n, 0.2 + n, 0.45 + n]
+            } else if shoulders {
+                // Cream, a few levels off the backdrop.
+                [0.90 + n, 0.88 + n, 0.80 + n]
+            } else {
+                [0.96 + n, 0.96 + n, 0.95 + n]
+            }
+            .map(|v| v.clamp(0.0, 1.0));
+        }
+    }
+    (img, truth, cream)
+}
+
+fn coverage(region: &Region, part: &[bool], w: usize, h: usize) -> f32 {
+    let (mut hit, mut n) = (0usize, 0usize);
+    for y in 0..h {
+        for x in 0..w {
+            if part[y * w + x] {
+                n += 1;
+                hit += (region.at(x as i32, y as i32) >= 0.5) as usize;
+            }
+        }
+    }
+    hit as f32 / n.max(1) as f32
+}
+
+#[test]
+fn select_subject_keeps_parts_close_to_the_background_colour() {
+    let (img, truth, cream) = low_contrast_figure(7);
+    let s = ImageSampler { img: &img, origin: (0, 0) };
+    let reg = subject::select_subject(&s, Rect::new(0, 0, 240, 200)).unwrap();
+    let v = iou(&reg, &truth, 240, 200);
+    let c = coverage(&reg, &cream, 240, 200);
+    assert!(c > 0.85, "the cream shoulders are part of the subject: covered {c}");
+    assert!(v > 0.9, "IoU {v}");
+}
+
+#[test]
+fn select_subject_leaves_a_background_coloured_gap_open() {
+    // A dark ring (arms on hips) around a patch of plain backdrop: the patch is not the subject.
+    let (w, h) = (220usize, 200usize);
+    let mut rng = Rng::new(11);
+    let mut img = RgbImage::new(w, h);
+    let mut truth = vec![false; w * h];
+    let mut gap = vec![false; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let d = (x as f32 - 110.0).hypot(y as f32 - 100.0);
+            let ring = (17.0..80.0).contains(&d);
+            let hole = d < 17.0;
+            let n = 0.012 * rng.normal();
+            let i = y * w + x;
+            truth[i] = ring;
+            gap[i] = hole;
+            img.px[i] = if ring { [0.2 + n, 0.15 + n, 0.35 + n] } else { [0.95 + n, 0.94 + n, 0.92 + n] }.map(|v| v.clamp(0.0, 1.0));
+        }
+    }
+    let s = ImageSampler { img: &img, origin: (0, 0) };
+    let reg = subject::select_subject(&s, Rect::new(0, 0, w as i32, h as i32)).unwrap();
+    let g = coverage(&reg, &gap, w, h);
+    assert!(g < 0.1, "the backdrop inside the ring stays unselected: covered {g}");
+    let v = iou(&reg, &truth, w, h);
+    assert!(v > 0.9, "IoU {v}");
+}
+
+/// Timing on a 6 MP figure, for before/after numbers (`cargo test --release -- --ignored select_subject_timing --nocapture`).
+#[test]
+#[ignore = "timing only"]
+fn select_subject_timing() {
+    let (w, h) = (3000usize, 2000usize);
+    let img = RgbImage::from_fn(w, h, |x, y| {
+        let body = (1100..1900).contains(&x) && (700..1900).contains(&y);
+        let shoulders = (1000..2000).contains(&x) && (400..700).contains(&y);
+        let t = ((x * 7 + y * 13) % 17) as f32 / 1700.0;
+        if body {
+            [0.12 + t, 0.2, 0.45]
+        } else if shoulders {
+            [0.90, 0.88 + t, 0.80]
+        } else {
+            [0.96, 0.96 + t, 0.95]
+        }
+    });
+    let s = ImageSampler { img: &img, origin: (0, 0) };
+    for _ in 0..2 {
+        let t0 = std::time::Instant::now();
+        let reg = subject::select_subject(&s, Rect::new(0, 0, w as i32, h as i32)).unwrap();
+        eprintln!("select_subject 6 MP: {:?} bbox {:?}", t0.elapsed(), reg.bbox);
+    }
+}
+
+/// Writes the #2788 scenes and the Select Subject mask over them as PPM files into
+/// `$SUBJECT_DUMP` (for the PR's before/after pictures).
+#[test]
+#[ignore = "writes pictures"]
+fn select_subject_dump_pictures() {
+    let Ok(dir) = std::env::var("SUBJECT_DUMP") else { return };
+    let write = |name: &str, img: &RgbImage, reg: Option<&Region>| {
+        let mut out = format!("P6\n{} {}\n255\n", img.w, img.h).into_bytes();
+        for y in 0..img.h {
+            for x in 0..img.w {
+                let mut c = img.at(x, y);
+                if let Some(r) = reg
+                    && r.at(x as i32, y as i32) >= 0.5
+                {
+                    c = [c[0] * 0.5 + 0.5, c[1] * 0.5, c[2] * 0.5 + 0.5];
+                }
+                out.extend(c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8));
+            }
+        }
+        std::fs::write(format!("{dir}/{name}.ppm"), out).unwrap();
+    };
+    let (img, _, _) = low_contrast_figure(7);
+    let s = ImageSampler { img: &img, origin: (0, 0) };
+    let reg = subject::select_subject(&s, Rect::new(0, 0, 240, 200));
+    write("figure", &img, None);
+    write("figure-selected", &img, reg.as_ref());
+    let (w, h) = (220usize, 200usize);
+    let mut rng = Rng::new(11);
+    let img = RgbImage::from_fn(w, h, |x, y| {
+        let d = (x as f32 - 110.0).hypot(y as f32 - 100.0);
+        let n = 0.012 * rng.normal();
+        if (17.0..80.0).contains(&d) { [0.2 + n, 0.15 + n, 0.35 + n] } else { [0.95 + n, 0.94 + n, 0.92 + n] }.map(|v| v.clamp(0.0, 1.0))
+    });
+    let s = ImageSampler { img: &img, origin: (0, 0) };
+    let reg = subject::select_subject(&s, Rect::new(0, 0, w as i32, h as i32));
+    write("ring", &img, None);
+    write("ring-selected", &img, reg.as_ref());
 }

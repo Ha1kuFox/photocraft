@@ -11,6 +11,7 @@ pub(crate) mod pcx;
 pub(crate) mod png;
 pub(crate) mod pnm;
 pub(crate) mod tiff;
+pub(crate) mod tiff_exif;
 pub(crate) mod tiff_ifd;
 pub(crate) mod via_image;
 pub(crate) mod vp8;

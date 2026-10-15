@@ -99,6 +99,27 @@ pub struct Locks {
 }
 
 impl Locks {
+    /// Set the lock a command names (`transparency`, `pixels`, `position`, `artboard`, `all`);
+    /// false for an unknown name. Lock Image Pixels includes Lock Transparent Pixels, so, as in
+    /// Photoshop, locking the pixels clears the transparency lock, and that one stays off while the
+    /// pixels are locked (#4892).
+    pub fn set(&mut self, key: &str, on: bool) -> bool {
+        match key {
+            "transparency" => self.transparency = on && !self.pixels,
+            "pixels" => {
+                self.pixels = on;
+                if on {
+                    self.transparency = false;
+                }
+            }
+            "position" => self.position = on,
+            "artboard" => self.artboard = on,
+            "all" => self.all = on,
+            _ => return false,
+        }
+        true
+    }
+
     /// Whether any lock is set: Photoshop then shows the lock icon on the layer's row.
     pub fn any(self) -> bool {
         self.transparency || self.pixels || self.position || self.artboard || self.all
@@ -844,6 +865,10 @@ pub struct Document {
     pub layers: Vec<Layer>,
     pub channels: Vec<AlphaChannel>,
     pub guides: Guides,
+    /// The rulers' zero point in document pixels (`[x, y]`), dragged from the ruler corner. The
+    /// rulers, the Info panel and other position readouts measure from it; `[0, 0]` (the
+    /// image's top-left) is the default.
+    pub ruler_origin: [f64; 2],
     /// Active selection as a grayscale coverage surface (None = no selection).
     pub selection: Option<Surface>,
     pub metadata: Metadata,
@@ -931,6 +956,7 @@ impl Document {
             layers: Vec::new(),
             channels: Vec::new(),
             guides: Guides::default(),
+            ruler_origin: [0.0, 0.0],
             selection: None,
             metadata: Metadata::default(),
             global_light: GlobalLight::default(),
@@ -1148,6 +1174,16 @@ impl Document {
         id
     }
 
+    /// Insert `layer` directly below the layer `below` (or at the bottom of the root if None).
+    pub fn insert_below(&mut self, below: Option<LayerId>, layer: Layer) -> LayerId {
+        let id = layer.id;
+        match below.and_then(|b| self.path_of(b)).and_then(|path| self.siblings_mut(&path)) {
+            Some((sib, idx)) => sib.insert(idx, layer),
+            None => self.layers.insert(0, layer),
+        }
+        id
+    }
+
     pub fn remove(&mut self, id: LayerId) -> Option<Layer> {
         let path = self.path_of(id)?;
         let (sib, idx) = self.siblings_mut(&path)?;
@@ -1343,6 +1379,17 @@ mod tests {
         assert!(!d.shift(b, 1));
         assert_eq!(d.remove(a).unwrap().name, "A");
         assert!(d.layer(a).is_none());
+    }
+
+    #[test]
+    fn insert_below_lands_under_the_reference() {
+        let mut d = doc();
+        let bg = d.layers[0].id;
+        let a = d.insert_above(Some(bg), Layer::raster("A", d.pixel_format()));
+        let b = d.insert_below(Some(a), Layer::raster("B", d.pixel_format()));
+        let names: Vec<_> = d.layers.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(names, ["Background", "B", "A"]);
+        assert_eq!(d.layers[1].id, b);
     }
 
     #[test]

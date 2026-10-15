@@ -685,9 +685,17 @@ fn fields(ui: &mut egui::Ui, f: &mut Map<String, Value>, mode: &str, now: &Compo
                     crate::field_tab::select_all(ui.ctx(), id, current_hex.trim_start_matches('#'));
                     ui.memory_mut(|m| m.request_focus(id));
                 }
-                let typing = if ui.memory(|m| m.has_focus(id)) { ui.data(|d| d.get_temp::<String>(id)) } else { None };
-                let mut h = typing.unwrap_or_else(|| hex(rgb).trim_start_matches('#').to_string());
+                let focused = ui.memory(|m| m.has_focus(id));
+                let pasted = if focused { take_hex_paste(ui) } else { None };
+                let typing = if focused { ui.data(|d| d.get_temp::<String>(id)) } else { None };
+                let mut h = match pasted {
+                    Some(c) => hex(c).trim_start_matches('#').to_ascii_uppercase(),
+                    None => typing.unwrap_or_else(|| hex(rgb).trim_start_matches('#').to_ascii_uppercase()),
+                };
                 let r = crate::widgets::text_field_ex(ui, id, &mut h, "", 64.0, true, Some(6));
+                if let Some(c) = pasted {
+                    edit = Some((c, Keep::Nothing));
+                }
                 if r.gained_focus() {
                     crate::field_tab::select_all(ui.ctx(), id, &h);
                 }
@@ -741,6 +749,23 @@ fn fields(ui: &mut egui::Ui, f: &mut Map<String, Value>, mode: &str, now: &Compo
     if let Some((c, keep)) = edit {
         set_rgb(f, c, keep);
     }
+}
+
+fn take_hex_paste(ui: &egui::Ui) -> Option<[f32; 3]> {
+    ui.input_mut(|i| {
+        let mut found = None;
+        i.events.retain(|e| match e {
+            egui::Event::Paste(s) => match parse_hex(s) {
+                Some(c) => {
+                    found = Some(c);
+                    false
+                }
+                None => true,
+            },
+            _ => true,
+        });
+        found
+    })
 }
 
 /// Add to Swatches was clicked: add the picked colour to the Swatches panel.
@@ -860,6 +885,13 @@ mod tests {
     }
 
     #[test]
+    fn hex_field_shows_uppercase_without_rewriting_the_selected_color() {
+        let h = picker("#12abef");
+        assert_eq!(h.get_by_role(Role::TextInput).value().as_deref(), Some("12ABEF"));
+        assert_eq!(color(&h), "#12abef", "casing is presentation only");
+    }
+
+    #[test]
     fn hex_field_takes_typed_digits() {
         let mut h = picker("#000000");
         h.get_by_role(Role::TextInput).click();
@@ -875,6 +907,23 @@ mod tests {
         h.key_press(egui::Key::Tab);
         h.run_steps(2);
         assert_eq!(color(&h), "#ff8800");
+    }
+
+    #[test]
+    fn hex_field_takes_every_paste_with_or_without_hash() {
+        let mut h = picker("#336699");
+        for (paste, want) in [("ff8800", "#ff8800"), ("#00ff00", "#00ff00"), (" 1234AB\n", "#1234ab")] {
+            h.event(egui::Event::Paste(paste.into()));
+            h.run_steps(2);
+            assert_eq!(color(&h), want, "paste {paste:?}");
+            assert_eq!(h.get_by_role(Role::TextInput).value().as_deref(), Some(&want[1..].to_ascii_uppercase()[..]));
+        }
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        h.run_steps(1);
+        h.event(egui::Event::Paste("ff".into()));
+        h.run_steps(2);
+        assert_eq!(h.get_by_role(Role::TextInput).value().as_deref(), Some("ff"));
+        assert_eq!(color(&h), "#1234ab");
     }
 
     #[test]

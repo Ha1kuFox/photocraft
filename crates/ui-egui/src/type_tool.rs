@@ -121,6 +121,7 @@ pub fn edit_active(app: &mut PhotocraftApp) -> Result<(), String> {
         ed.caret = n;
     }
     let vertical = app.session.active().and_then(|st| text_layer(&st.doc, id)).is_some_and(|t| t.orientation == photocraft_doc::text::Orientation::Vertical);
+    app.ui.text_edit_return_tool = None;
     app.ui.tool = if vertical { crate::state::Tool::VerticalType } else { crate::state::Tool::Type };
     app.ui.mask_target = false;
     app.ui.vector_mask_target = false;
@@ -132,6 +133,7 @@ pub fn edit_active(app: &mut PhotocraftApp) -> Result<(), String> {
 /// type is there.
 pub fn edit_at(app: &mut PhotocraftApp, x: f64, y: f64) -> bool {
     let Some(id) = hit_layer(app, x, y) else { return false };
+    let previous_tool = app.ui.tool;
     commit(app);
     if app.session.select_layer(id).is_err() {
         return false;
@@ -144,6 +146,9 @@ pub fn edit_at(app: &mut PhotocraftApp, x: f64, y: f64) -> bool {
     app.ui.text_edit =
         Some(TextEdit { layer: id.0, caret: off, anchor: off, session: key, created: false, mask: false, dragging: false, resize: None, preedit: None });
     let vertical = app.session.active().and_then(|st| text_layer(&st.doc, id)).is_some_and(|t| t.orientation == photocraft_doc::text::Orientation::Vertical);
+    if !previous_tool.is_type() {
+        app.ui.text_edit_return_tool = Some(previous_tool);
+    }
     app.ui.tool = if vertical { crate::state::Tool::VerticalType } else { crate::state::Tool::Type };
     app.ui.mask_target = false;
     app.ui.vector_mask_target = false;
@@ -271,6 +276,7 @@ pub fn pointer_down(app: &mut PhotocraftApp, x: f64, y: f64, mods: egui::Modifie
         let off = hit_offset(app, id, x, y);
         app.ui.text_edit =
             Some(TextEdit { layer: id.0, caret: off, anchor: off, session: key, created: false, mask: false, dragging: true, resize: None, preedit: None });
+        app.ui.text_edit_return_tool = None;
         return true;
     }
     false
@@ -335,6 +341,7 @@ pub fn pointer_up(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2]) {
         // Like Photoshop: the placeholder is selected, so typing replaces it.
         let n = text.chars().count();
         app.ui.text_edit = Some(TextEdit { layer: id, caret: n, anchor: 0, session: key, created: true, mask, dragging: false, resize: None, preedit: None });
+        app.ui.text_edit_return_tool = None;
     }
 }
 
@@ -773,6 +780,7 @@ pub fn handle_keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
     let id = LayerId(ed.layer);
     let Some(text) = current_text(app, id) else {
         app.ui.text_edit = None;
+        app.ui.text_edit_return_tool = None;
         return false;
     };
     // Undo/redo can shorten the text under us.
@@ -960,6 +968,11 @@ pub fn commit_with(app: &mut PhotocraftApp, mods: egui::Modifiers) {
     }
     crate::type_transform::reset(app);
     let Some(ed) = app.ui.text_edit.take() else { return };
+    if let Some(tool) = app.ui.text_edit_return_tool.take()
+        && app.ui.tool.is_type()
+    {
+        app.ui.tool = tool;
+    }
     let Some(text) = current_text(app, LayerId(ed.layer)) else { return };
     if ed.mask {
         // Type Mask: the text's glyphs become (or combine with) the selection and the working
@@ -1014,20 +1027,20 @@ pub fn draw_overlay(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewX
     }
     // Frame: paragraph text shows its box with handles; point text an underline per line.
     let mods = crate::workspace_ui::sticky_mods(app, painter.ctx().input(|i| i.modifiers));
-    if crate::type_transform::draw(app, painter, xf, mods) {
-        return;
-    }
+    let has_transform = crate::type_transform::draw(app, painter, xf, mods);
     let shape = app.session.active().and_then(|s| text_layer(&s.doc, id).map(|t| t.shape.clone()));
     let frame = Stroke::new(1.0, t.accent);
     match shape {
         Some(photocraft_doc::text::TextShape::Box { x, y, width, height }) => {
-            let c = [scr_t(x, y), scr_t(x + width, y), scr_t(x + width, y + height), scr_t(x, y + height)];
-            painter.add(egui::Shape::closed_line(c.to_vec(), frame));
-            let mids = [c[0].lerp(c[1], 0.5), c[1].lerp(c[2], 0.5), c[2].lerp(c[3], 0.5), c[3].lerp(c[0], 0.5)];
-            for p in c.iter().chain(mids.iter()) {
-                let r = egui::Rect::from_center_size(*p, egui::vec2(7.0, 7.0));
-                painter.rect_filled(r, 0.0, Color32::WHITE);
-                painter.rect_stroke(r, 0.0, frame, egui::StrokeKind::Inside);
+            if !has_transform {
+                let c = [scr_t(x, y), scr_t(x + width, y), scr_t(x + width, y + height), scr_t(x, y + height)];
+                painter.add(egui::Shape::closed_line(c.to_vec(), frame));
+                let mids = [c[0].lerp(c[1], 0.5), c[1].lerp(c[2], 0.5), c[2].lerp(c[3], 0.5), c[3].lerp(c[0], 0.5)];
+                for p in c.iter().chain(mids.iter()) {
+                    let r = egui::Rect::from_center_size(*p, egui::vec2(7.0, 7.0));
+                    painter.rect_filled(r, 0.0, Color32::WHITE);
+                    painter.rect_stroke(r, 0.0, frame, egui::StrokeKind::Inside);
+                }
             }
         }
         _ => {
@@ -1529,16 +1542,49 @@ pub(crate) fn family_picker_in(
     press.after(&response.response);
     let hovered_font = response.inner.unwrap_or_default();
 
+    // The wheel over the closed button steps through the families, a notch each, like Photoshop's
+    // options-bar font menu: no need to open the list (#3350).
+    if !egui::ComboBox::is_open(ui.ctx(), response.response.id) && ui.is_enabled() {
+        let hovered = response.response.hovered();
+        if hovered {
+            ui.input_mut(|i| i.smooth_scroll_delta = egui::Vec2::ZERO);
+        }
+        let notches = crate::widgets::wheel_notches_of(ui, response.response.id.with("family-wheel"), hovered, 1.0);
+        let rows = font_menu_rows(families, labels, "");
+        if let Some(i) = rows.iter().position(|(f, _)| *f == current)
+            && let Some(n) = wheel_family_index(i, rows.len(), notches)
+            && let Some((f, _)) = rows.get(n)
+            && **f != *current
+        {
+            current.clone_from(f);
+            photocraft_text::served::request(f);
+            changed = true;
+        }
+    }
+
     if salt == "type-font" {
         let hover_id = egui::Id::new("type-font-hover");
         if let Some(f) = hovered_font {
             ui.ctx().data_mut(|d| d.insert_temp(hover_id, f));
-        } else {
+        } else if egui::ComboBox::is_open(ui.ctx(), response.response.id) {
+            // Only the open menu clears it: the options bar and the Character section both draw
+            // this picker, and the closed one must not wipe the other's hover (#5152).
             ui.ctx().data_mut(|d| d.remove::<String>(hover_id));
         }
     }
 
     changed
+}
+
+/// The row `notches` wheel notches from row `index` of `len` (down, negative, is the next one),
+/// stopping at the ends; none when the wheel did not move.
+fn wheel_family_index(index: usize, len: usize, notches: f32) -> Option<usize> {
+    let steps = notches.abs().min(len as f32) as usize;
+    if steps == 0 || len == 0 {
+        return None;
+    }
+    let last = len - 1;
+    Some(if notches < 0.0 { index.saturating_add(steps).min(last) } else { index.saturating_sub(steps) })
 }
 
 /// Representative for the displayed properties: the edit layer, else a selected type layer.
@@ -2359,6 +2405,11 @@ fn type_options(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 pub fn cancel(app: &mut PhotocraftApp) {
     crate::type_transform::reset(app);
     let Some(ed) = app.ui.text_edit.take() else { return };
+    if let Some(tool) = app.ui.text_edit_return_tool.take()
+        && app.ui.tool.is_type()
+    {
+        app.ui.tool = tool;
+    }
     undo_session(app, &ed);
 }
 
@@ -2648,5 +2699,42 @@ mod tests {
         assert_eq!(word_boundary("hello big world", 0, true), 5);
         assert_eq!(word_boundary("hello big world", 7, false), 6);
         assert_eq!(word_boundary("hello big world", 15, false), 10);
+    }
+    #[test]
+    fn double_click_from_move_tool_restores_move_tool_on_commit_and_cancel() {
+        let (mut app, _) = variants();
+        app.ui.tool = crate::state::Tool::Move;
+        assert!(edit_at(&mut app, ON_TEXT.0, ON_TEXT.1));
+        assert_eq!(app.ui.tool, crate::state::Tool::Type);
+        assert_eq!(app.ui.text_edit_return_tool, Some(crate::state::Tool::Move));
+        commit(&mut app);
+        assert_eq!(app.ui.tool, crate::state::Tool::Move, "commit restores the Move tool");
+        assert_eq!(app.ui.text_edit_return_tool, None);
+
+        // Also test cancel
+        app.ui.tool = crate::state::Tool::Move;
+        assert!(edit_at(&mut app, ON_TEXT.0, ON_TEXT.1));
+        assert_eq!(app.ui.tool, crate::state::Tool::Type);
+        cancel(&mut app);
+        assert_eq!(app.ui.tool, crate::state::Tool::Move, "cancel restores the Move tool");
+        assert_eq!(app.ui.text_edit_return_tool, None);
+
+        // Switching tools mid-edit commits without overriding the newly chosen tool
+        app.ui.tool = crate::state::Tool::Move;
+        assert!(edit_at(&mut app, ON_TEXT.0, ON_TEXT.1));
+        assert_eq!(app.ui.tool, crate::state::Tool::Type);
+        assert_eq!(app.ui.text_edit_return_tool, Some(crate::state::Tool::Move));
+        app.ui.tool = crate::state::Tool::Brush;
+        commit(&mut app);
+        assert_eq!(app.ui.tool, crate::state::Tool::Brush, "switching tools keeps the chosen tool");
+        assert_eq!(app.ui.text_edit_return_tool, None);
+
+        // Layers-thumbnail edit stays on Type tool (matches Photoshop)
+        app.ui.tool = crate::state::Tool::Move;
+        edit_active(&mut app).unwrap();
+        assert_eq!(app.ui.tool, crate::state::Tool::Type);
+        assert_eq!(app.ui.text_edit_return_tool, None);
+        commit(&mut app);
+        assert_eq!(app.ui.tool, crate::state::Tool::Type, "Layers-thumbnail edit stays on Type tool");
     }
 }

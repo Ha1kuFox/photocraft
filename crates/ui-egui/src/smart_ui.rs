@@ -1,6 +1,7 @@
 //! Layers-panel pieces for smart objects: the thumbnail badge and the Smart Filters sub-rows
 //! (eye toggles; double-click a filter to re-open its dialog with the recorded parameters; click
-//! to select one; drag onto another smart object to move it there, ⌥-drag to copy it, #4271).
+//! to select one; drag onto another smart object to move it there, ⌥-drag to copy it, #4271;
+//! drag it up or down its own stack to reorder it).
 
 use egui::{Align2, Color32, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 use photocraft_doc::{Document, Layer, LayerContent, LayerId, SmartObject};
@@ -87,6 +88,14 @@ pub fn filter_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth:
         if resp.drag_started() {
             ui.ctx().data_mut(|d| d.insert_temp::<FilterDrag>(drag_key(), (l.id.0, index)));
         }
+        if let Some((to, action)) = reorder_drop(ui, l, sm.smart_filters.len(), index, rect) {
+            // The moved filter ends up selected, with its smart object active, as after a click.
+            ui.ctx().data_mut(|d| d.insert_temp::<FilterDrag>(selected_key(doc), (l.id.0, Some(to))));
+            actions.push(action);
+            if !active {
+                actions.push(("layer.select".into(), json!({"layer": l.id.0})));
+            }
+        }
         // Selected as in Photoshop: the row stays highlighted while its smart object is active.
         let selected = active && picked == Some((l.id.0, index));
         if selected {
@@ -151,6 +160,26 @@ fn selected_key(doc: photocraft_doc::DocId) -> egui::Id {
     egui::Id::new(("smart-filter-selected", doc))
 }
 
+/// The selected smart filter row, while its smart object is active and the filter still exists.
+pub(crate) fn selected(ctx: &egui::Context, doc: &Document, active: Option<LayerId>) -> Option<FilterDrag> {
+    let (layer, filter) = ctx.data(|d| d.get_temp::<FilterDrag>(selected_key(doc.id)))?;
+    if active != Some(LayerId(layer)) {
+        return None;
+    }
+    let LayerContent::Smart(sm) = &doc.layer(LayerId(layer))?.content else { return None };
+    let exists = match filter {
+        Some(i) => i < sm.smart_filters.len(),
+        None => !sm.smart_filters.is_empty(),
+    };
+    exists.then_some((layer, filter))
+}
+
+/// Forgets the selected smart filter row: its smart object's own row was clicked, or the filter
+/// was deleted (its index would now name the next one).
+pub(crate) fn deselect(ctx: &egui::Context, doc: photocraft_doc::DocId) {
+    ctx.data_mut(|d| d.remove::<FilterDrag>(selected_key(doc)));
+}
+
 /// While smart filters are dragged: their name by the pointer, and the copy cursor while ⌥ is held.
 pub(crate) fn drag_feedback(ctx: &egui::Context, doc: &Document) {
     let Some((from, filter)) = ctx.data(|d| d.get_temp::<FilterDrag>(drag_key())) else { return };
@@ -190,6 +219,53 @@ pub(crate) fn drop_on_row(ctx: &egui::Context, ui: &egui::Ui, l: &Layer, rect: R
     }
 }
 
+/// Where `layer.smartFilter.move` puts filter `src` (stack index, 0 = bottom) dropped on the row
+/// of filter `row` (`None`: the Smart Filters row, i.e. on top of the stack), `above` or below
+/// it, in a stack of `n`. `None` when the filter would stay where it is.
+fn reorder_target(src: usize, row: Option<usize>, above: bool, n: usize) -> Option<usize> {
+    let to = match row {
+        None => n.checked_sub(1)?,
+        Some(i) if i == src => return None,
+        // Above a row is just over it in the stack, below a row just under it. `move` removes
+        // the filter first, so the filters over `src` shift down by one.
+        Some(i) if above => {
+            if src < i {
+                i
+            } else {
+                i + 1
+            }
+        }
+        Some(i) => {
+            if src < i {
+                i - 1
+            } else {
+                i
+            }
+        }
+    };
+    (to < n && to != src).then_some(to)
+}
+
+/// A filter dragged up or down its own smart object's stack (Photoshop): over another row of the
+/// stack a line marks where it lands, above or below that row (the Smart Filters row: on top),
+/// and the release moves it there. The bottom filter is applied first, so the order changes the
+/// result (Unsharp Mask over a blur sharpens the blurred image; under it, the sharpening is
+/// blurred). Returns the filter's new index and the command.
+fn reorder_drop(ui: &egui::Ui, l: &Layer, n: usize, row: Option<usize>, rect: Rect) -> Option<(usize, (String, Value))> {
+    let ctx = ui.ctx();
+    let (from, src) = ctx.data(|d| d.get_temp::<FilterDrag>(drag_key()))?;
+    let (src, p) = (src?, ctx.input(|i| i.pointer.interact_pos())?);
+    if from != l.id.0 || !rect.contains(p) {
+        return None;
+    }
+    let above = p.y < rect.center().y;
+    let to = reorder_target(src, row, above, n)?;
+    let t = Tokens::get(ctx);
+    let y = if above && row.is_some() { rect.top() } else { rect.bottom() };
+    ui.painter().line_segment([pos2(rect.left() + 30.0, y), pos2(rect.right(), y)], Stroke::new(2.0, t.accent));
+    ctx.input(|i| i.pointer.any_released()).then(|| (to, ("layer.smartFilter.move".into(), json!({"layer": l.id.0, "index": src, "to": to}))))
+}
+
 /// Smart filters dropped on the footer's Delete button: a filter's row deletes that filter, the
 /// Smart Filters row clears them all.
 pub(crate) fn trash_action((layer, filter): FilterDrag) -> (String, Value) {
@@ -211,15 +287,37 @@ pub fn open_editor(app: &mut PhotocraftApp, ctx: &egui::Context, layer: u64, sm:
         }
         return;
     }
+    // So has the Filter Gallery.
+    if f.command == "filter.filterGallery" {
+        if let Err(e) = crate::gallery_ui::open_smart_filter(app, photocraft_doc::LayerId(layer), index) {
+            app.ui.status = e;
+            app.ui.status_error = true;
+        }
+        return;
+    }
+    // An adjustment recorded on the smart object (Brightness/Contrast, Levels…) re-opens its own
+    // Image › Adjustments editor, like the filters above.
+    if crate::adjust_dialog::has_dialog(&f.command) {
+        if let Some(id) = crate::adjust_dialog::open(app, &f.command) {
+            edit_filter(app, id, layer, index, &f.params);
+        }
+        return;
+    }
     if !crate::filter_dialog::has_dialog(&f.command) {
         return;
     }
     let Some(id) = crate::filter_dialog::open(app, &f.command) else { return };
+    edit_filter(app, id, layer, index, &f.params);
+}
+
+/// Hands the open dialog `id` the smart filter's recorded `params` and makes OK update that
+/// filter (`layer.smartFilter.setParams`, see [`confirm_command`]) instead of adding another.
+fn edit_filter(app: &mut PhotocraftApp, id: u64, layer: u64, index: usize, params: &Value) {
     if let Some(d) = app.ui.dialog_mut(id) {
         // The live preview would stack a second copy of the filter on the smart object.
         d.fields.remove("__preview");
         d.fields.insert("__smartFilter".into(), json!({"layer": layer, "index": index}));
-        if let Value::Object(p) = &f.params {
+        if let Value::Object(p) = params {
             for (k, v) in p {
                 if d.fields.contains_key(k) {
                     d.fields.insert(k.clone(), v.clone());
@@ -253,6 +351,25 @@ mod tests {
         let pixel = s.execute("layer.new.layer", json!({})).unwrap()["layer"].as_u64().unwrap();
         let doc = &s.active().unwrap().doc;
         [pixel, shape, smart].map(|id| doc.layer(photocraft_doc::LayerId(id)).unwrap().clone())
+    }
+
+    /// Stack [A, B, C] (A at the bottom, drawn last): where a dragged filter lands.
+    #[test]
+    fn a_filter_dropped_above_or_below_a_row_lands_next_to_it() {
+        // A over C: [B, C, A]. A under C: [B, A, C].
+        assert_eq!(reorder_target(0, Some(2), true, 3), Some(2));
+        assert_eq!(reorder_target(0, Some(2), false, 3), Some(1));
+        // C under A: [C, A, B]. C over A: [A, C, B].
+        assert_eq!(reorder_target(2, Some(0), false, 3), Some(0));
+        assert_eq!(reorder_target(2, Some(0), true, 3), Some(1));
+        // The Smart Filters row: on top.
+        assert_eq!(reorder_target(0, None, false, 3), Some(2));
+        // Next to where it already is, or on itself: nothing to do.
+        assert_eq!(reorder_target(1, Some(2), false, 3), None);
+        assert_eq!(reorder_target(1, Some(0), true, 3), None);
+        assert_eq!(reorder_target(1, Some(1), true, 3), None);
+        assert_eq!(reorder_target(2, None, true, 3), None);
+        assert_eq!(reorder_target(0, None, true, 0), None);
     }
 
     #[test]
@@ -301,5 +418,38 @@ mod tests {
         let drawn = filled(&smart, thumb);
         assert!(drawn.contains(&(frame, t.field)));
         assert!(drawn.iter().all(|(_, c)| *c != t.icon));
+    }
+
+    /// #5689: an Image › Adjustments recorded on a smart object (Brightness/Contrast…) opens its
+    /// own editor from the Smart Filters row, with the recorded settings, and OK updates that
+    /// filter instead of stacking another.
+    #[test]
+    fn an_adjustment_smart_filter_opens_its_editor_and_updates_it() {
+        let mut s = photocraft_engine::Session::new();
+        s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
+        s.execute("layer.new.layer", json!({})).unwrap();
+        s.execute("edit.fill", json!({"contents": "black"})).unwrap();
+        let id = s.execute("layer.smartObjects.convertToSmartObject", json!({})).unwrap()["layer"].as_u64().unwrap();
+        s.execute("image.adjustments.brightnessContrast", json!({"brightness": 40, "contrast": -10})).unwrap();
+        let mut app = PhotocraftApp::new(s, crate::Services::default());
+        let sm = match &app.session.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap().content {
+            LayerContent::Smart(sm) => sm.clone(),
+            other => panic!("expected a smart object, got {other:?}"),
+        };
+        assert_eq!(sm.smart_filters.len(), 1);
+        open_editor(&mut app, &egui::Context::default(), id, &sm, 0);
+        let d = app.ui.dialogs.last().expect("the adjustment editor opened");
+        assert_eq!(d.fields.get("__adjust").and_then(Value::as_str), Some("brightnessContrast"));
+        assert_eq!(d.fields.get("brightness").and_then(Value::as_f64), Some(40.0), "the recorded settings");
+        assert_eq!(d.fields.get("contrast").and_then(Value::as_f64), Some(-10.0));
+        let dialog = d.id;
+        // OK updates the recorded filter (one history step), it does not add a second filter.
+        crate::dialogs::confirm(&mut app, dialog).unwrap();
+        let LayerContent::Smart(sm) = &app.session.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap().content else {
+            panic!("the layer stays a smart object");
+        };
+        assert_eq!(sm.smart_filters.len(), 1, "no filter was stacked");
+        assert_eq!(sm.smart_filters[0].params.get("brightness").and_then(Value::as_f64), Some(40.0));
+        assert_eq!(sm.smart_filters[0].params.get("contrast").and_then(Value::as_f64), Some(-10.0));
     }
 }

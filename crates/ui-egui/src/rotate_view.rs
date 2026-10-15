@@ -318,6 +318,22 @@ mod tests {
     }
 
     #[test]
+    fn native_rotate_event_reaches_canvas_when_trackpad_rotation_is_enabled() {
+        let ctx = egui::Context::default();
+        let mut enabled = None;
+        let mut disabled = None;
+        let raw = egui::RawInput { events: vec![Event::Rotate(std::f32::consts::FRAC_PI_6)], ..Default::default() };
+        let mut output = ctx.run_ui(raw, |ui| {
+            enabled = trackpad_delta(ui.ctx(), true);
+            disabled = trackpad_delta(ui.ctx(), false);
+        });
+        output.textures_delta.clear();
+
+        assert!(enabled.is_some_and(|degrees| (degrees - 30.0).abs() < 1e-3), "{enabled:?}");
+        assert_eq!(disabled, None);
+    }
+
+    #[test]
     fn trackpad_pref_gates_rotation() {
         assert_eq!(apply_trackpad(10.0, false, 0.5), None);
         assert_eq!(apply_trackpad(10.0, true, 0.0), None);

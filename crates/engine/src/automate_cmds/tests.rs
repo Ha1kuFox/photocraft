@@ -50,8 +50,29 @@ fn browse_runs_a_script_file() {
     assert_eq!((d.size.width, d.size.height), (20, 30));
     assert!(s.execute("file.scripts.browse", json!({"script": "no.such.command"})).is_err());
     // A failing step stops the script and is reported.
-    let r = s.execute("file.scripts.browse", json!({"steps": [["layer.delete", {"layer": 999_999}], ["image.imageRotation.90cw", {}]]})).unwrap();
+    let r = s.execute("file.scripts.browse", json!({"steps": [["layer.delete", {"layer": u64::MAX}], ["image.imageRotation.90cw", {}]]})).unwrap();
     assert_eq!(r["results"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn browse_rejects_photoshop_extendscript() {
+    let dir = tmp("jsx");
+    let jsx = format!("{dir}/hello.jsx");
+    std::fs::write(&jsx, "alert('hi');\n").unwrap();
+    let mut s = Session::new();
+    let err = s.execute("file.scripts.browse", json!({"path": jsx})).unwrap_err().to_string();
+    assert!(err.contains("not Photoshop ExtendScript"), "{err}");
+    assert!(err.contains("JSON"), "{err}");
+    let js = format!("{dir}/hello.js");
+    std::fs::write(&js, "alert('hi');\n").unwrap();
+    assert!(s.execute("file.scripts.browse", json!({"path": js})).is_err());
+    let err = s.execute("file.scripts.browse", json!({"name": "Resize.jsx", "script": "alert(1);"})).unwrap_err().to_string();
+    assert!(err.contains(".js/.jsx"), "{err}");
+    // A JSON script still runs even if the file name is not a Photoshop suffix.
+    let json = format!("{dir}/rotate.json");
+    std::fs::write(&json, r#"[["file.new", {"width": 8, "height": 8}]]"#).unwrap();
+    let r = s.execute("file.scripts.browse", json!({"path": json})).unwrap();
+    assert_eq!(r["ok"], true);
 }
 
 #[test]
@@ -348,7 +369,7 @@ fn a_failed_step_inside_a_called_action_fails_scripts_and_batch() {
     });
     s.actions.list.push(Action {
         name: "Bad".into(),
-        steps: vec![("layer.delete".into(), json!({"layer": 999_999}))],
+        steps: vec![("layer.delete".into(), json!({"layer": u64::MAX}))],
         disabled: Default::default(),
         ..Default::default()
     });

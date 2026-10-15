@@ -67,9 +67,23 @@ fn dim(ui: &mut egui::Ui, s: &str) {
     ui.label(RichText::new(s).color(t.text_dim));
 }
 
-/// `Control: [Off ▾] [25]`: the controller pop-up plus Fade's step count. `angle` offers the
+/// Whether a dynamic's control has a 0..1 input its own response curve shapes (not Off, not the
+/// direction controls, not Angle Jitter, whose controls set an angle).
+pub(crate) fn takes_curve(control: Control, angle: bool) -> bool {
+    !angle && matches!(control, Control::Fade | Control::PenPressure | Control::PenTilt | Control::StylusWheel | Control::Rotation)
+}
+
+/// egui memory key of the open/closed state of a dynamic's curve editor.
+pub(crate) fn curve_open_id(id: &str) -> egui::Id {
+    egui::Id::new(("brush-curve-open", id))
+}
+
+/// `Control: [Off ▾] [25] [~]`: the controller pop-up, Fade's step count and the button that
+/// shows this dynamic's own response curve (lit while the curve isn't linear). `angle` offers the
 /// direction controls (Photoshop only has them for Angle Jitter).
 fn control_row(ui: &mut egui::Ui, id: &str, d: &mut Dynamic, angle: bool) {
+    let open_id = curve_open_id(id);
+    let mut open: bool = ui.data(|m| m.get_temp(open_id)).unwrap_or(false);
     ui.horizontal(|ui| {
         dim(ui, tl!("Control:"));
         let n = if angle || matches!(d.control, Control::InitialDirection | Control::Direction) { 8 } else { 6 };
@@ -80,7 +94,17 @@ fn control_row(ui: &mut egui::Ui, id: &str, d: &mut Dynamic, angle: bool) {
                 d.fade_steps = steps.round().clamp(1.0, 9999.0) as u32;
             }
         }
+        if takes_curve(d.control, angle) && crate::icons::button(ui, "spline", 22.0, open || !d.curve.is_linear(), tl!("Response curve")).clicked() {
+            open = !open;
+        }
     });
+    if open && takes_curve(d.control, angle) {
+        let mut points = d.curve.points();
+        if crate::pressure_curve_ui::edit_points(ui, egui::Id::new(("brush-curve-rect", id)), &mut points) {
+            d.curve = paint::ResponseCurve::new(&points);
+        }
+    }
+    ui.data_mut(|m| m.insert_temp(open_id, open));
     ui.add_space(2.0);
 }
 
@@ -512,10 +536,7 @@ fn color_dynamics(ui: &mut egui::Ui, b: &mut BrushSettings) {
     widgets::checkbox(ui, &mut c.per_tip, tl!("Apply Per Tip"));
     ui.add_space(6.0);
     dynamic(ui, "brush-fgbg-ctl", tl!("Foreground/Background Jitter"), &mut c.fg_bg, 1.0, None, false);
-    let mut h = (c.hue_jitter * 100.0).round();
-    if widgets::slider_row(ui, tl!("Hue Jitter"), &mut h, 0.0..=100.0, "%", Some(&widgets::hue_stops())).changed() {
-        c.hue_jitter = (h.round() / 100.0).clamp(0.0, 1.0);
-    }
+    pct(ui, tl!("Hue Jitter"), &mut c.hue_jitter, 1.0);
     pct(ui, tl!("Saturation Jitter"), &mut c.saturation_jitter, 1.0);
     pct(ui, tl!("Brightness Jitter"), &mut c.brightness_jitter, 1.0);
     signed_pct(ui, tl!("Purity"), &mut c.purity, -1.0, 1.0);
@@ -646,6 +667,29 @@ mod tests {
         );
         h.run_steps(3);
         h
+    }
+
+    /// #3825: jitter is an amount, not a hue selector; it uses the themed amount track.
+    #[test]
+    fn hue_jitter_paints_an_amount_track_in_every_theme() {
+        for kind in theme::ThemeKind::ALL {
+            let mut b = BrushSettings::default();
+            b.color_dynamics.hue_jitter = 0.37;
+            let mut h = section_harness(5, b.clone());
+            crate::PhotocraftApp::setup_context(&h.ctx, kind);
+            h.run_steps(3);
+            let label = h.get_by_label("Hue Jitter").rect();
+            let t = Tokens::get(&h.ctx);
+            assert!(
+                h.output().shapes.iter().any(|c| matches!(&c.shape, egui::Shape::Rect(r)
+                    if r.rect.width() > 150.0 && (r.rect.height() - 3.0).abs() < 0.1
+                    && r.rect.top() > label.bottom() && r.rect.bottom() < label.bottom() + 30.0
+                    && r.fill == t.field_border)),
+                "{kind:?}: Hue Jitter paints the same neutral track as other percentage amounts"
+            );
+            assert!(h.query_all_by_role(Role::SpinButton).any(|n| n.accesskit_node().numeric_value() == Some(37.0)));
+            assert_eq!(h.state(), &b, "rendering does not change saved brush settings");
+        }
     }
 
     fn set_controls(b: &mut BrushSettings, control: Control) {

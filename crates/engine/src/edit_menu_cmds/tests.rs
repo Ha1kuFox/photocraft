@@ -544,3 +544,23 @@ fn backward_change_find_moves_past_the_replaced_text() {
     assert_eq!((r["changed"]["start"].as_u64(), r["changed"]["end"].as_u64()), (Some(0), Some(3)), "{r}");
     assert_eq!((r["found"]["start"].as_u64(), r["found"]["end"].as_u64()), (Some(8), Some(11)), "{r}");
 }
+
+#[test]
+fn fade_allocation_failure_keeps_document_and_history() {
+    for depth in [8, 16, 32] {
+        let mut s = session(depth);
+        s.execute("edit.fill", json!({"color": "#000000"})).unwrap();
+        let before = s.active().unwrap().doc.clone();
+        let history = s.active().unwrap().history.entries();
+        crate::allocation::fail_next_for_test();
+        let result = s.execute("edit.fade", json!({"opacity": 25}));
+        let _ = crate::allocation::capacity::<u8>(0, "reset failpoint");
+        assert!(result.is_err());
+        assert_eq!(*s.active().unwrap().doc, *before);
+        assert_eq!(s.active().unwrap().history.entries(), history);
+        assert!(s.is_enabled("edit.fade"));
+        s.execute("edit.fade", json!({"opacity": 25})).unwrap();
+        assert!(s.undo());
+        assert_eq!(*s.active().unwrap().doc, *before);
+    }
+}

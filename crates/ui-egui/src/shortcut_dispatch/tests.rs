@@ -135,9 +135,13 @@ fn put_focus(h: &mut Harness<'_, PhotocraftApp>, place: Place) {
 }
 
 /// Is `bound` the same action as the menu item `shown`? (Window › Layers is `window.panel.layers`
-/// in the catalogue and `window.toggle.layers` in the shell.)
+/// in the catalogue and `window.toggle.layers` in the shell; Release Clipping Mask shows Create
+/// Clipping Mask's key, which releases while it reads so.)
 fn same(shown: &str, bound: &str) -> bool {
-    shown == bound || crate::menus::panel_alias(shown) == Some(bound) || crate::menus::panel_alias(bound) == Some(shown)
+    shown == bound
+        || crate::menus::panel_alias(shown) == Some(bound)
+        || crate::menus::panel_alias(bound) == Some(shown)
+        || (shown == "layer.releaseClippingMask" && bound == "layer.createClippingMask")
 }
 
 /// Every shortcut shown in the menus (and the shell's unlisted ones), with whether it is live.
@@ -309,6 +313,47 @@ fn a_disabled_shortcut_uses_the_command_id_translation() {
         assert!(app.ui.status.starts_with("Vybrat vše není k dispozici:"), "{}", app.ui.status);
         assert!(app.ui.status_error);
     });
+}
+
+/// #3665: Photoshop's second keys reach their command beside its main key: F2/F3/F4 Cut, Copy
+/// and Paste, Shift+F7 Inverse, ⌘+ Zoom In, Shift+Backspace Fill.
+#[test]
+fn alternate_keys_run_their_command() {
+    let mut h = harness();
+    put_focus(&mut h, Place::Canvas);
+    set_dry_run(&h.ctx, true);
+    for (key, want) in [
+        ("F2", "edit.cut"),
+        ("F3", "edit.copy"),
+        ("Cmd+C", "edit.copy"),
+        ("F4", "edit.paste"),
+        ("Shift+F7", "select.inverse"),
+        ("Cmd+Shift+I", "select.inverse"),
+        ("Cmd++", "view.zoomIn"),
+        ("Shift+Backspace", "edit.fill"),
+    ] {
+        press(&mut h, key);
+        let log = take_log(&h.ctx);
+        assert!(matches!(log.as_slice(), [(id, _)] if id == want), "{key}: {log:?}");
+    }
+    // Overriding Copy's main key keeps F3; ⌘C no longer copies.
+    h.state_mut().session.edit_prefs(|p| {
+        p.shortcuts.insert("edit.copy".into(), "Cmd+K".into());
+    });
+    press(&mut h, "F3");
+    assert!(matches!(take_log(&h.ctx).as_slice(), [(id, _)] if id == "edit.copy"));
+    // A key a user gives another command wins over a default alternate.
+    h.state_mut().session.edit_prefs(|p| {
+        p.shortcuts.insert("layer.renameLayer".into(), "F2".into());
+    });
+    assert!(bindings(h.state()).iter().any(|(id, sc)| id == "layer.renameLayer" && *sc == parse("F2").unwrap()));
+    assert!(!bindings(h.state()).iter().any(|(id, sc)| id == "edit.cut" && *sc == parse("F2").unwrap()));
+    // A removed alternate no longer fires.
+    h.state_mut().session.edit_prefs(|p| {
+        p.alternate_shortcuts.insert("edit.paste".into(), Vec::new());
+    });
+    press(&mut h, "F4");
+    assert!(take_log(&h.ctx).is_empty());
 }
 
 /// #352: ⌥[ ⌥] ⌥, ⌥. and ⇧⌥[ walk the Layers panel's rows from the keyboard.
@@ -564,6 +609,65 @@ fn delete_with_a_selection_clears_it() {
     press(&mut h, "Delete");
     assert_eq!(logged(&h), ["edit.clear"]);
     assert_eq!(names(&h), before, "no layer was deleted");
+}
+
+fn is_clipped(h: &Harness<'_, PhotocraftApp>, id: photocraft_doc::LayerId) -> bool {
+    h.state().session.active().unwrap().doc.layer(id).unwrap().clipped
+}
+
+/// The Layer menu's clipping mask items: (id, label, shortcut, enabled).
+fn clip_items(h: &Harness<'_, PhotocraftApp>) -> Vec<(String, String, Option<String>, bool)> {
+    crate::menus::menu_items(h.state()).into_iter().filter(|i| i.id.ends_with("ClippingMask")).map(|i| (i.id, i.label, i.shortcut, i.enabled)).collect()
+}
+
+fn clip_item(id: &str, label: &str) -> Vec<(String, String, Option<String>, bool)> {
+    vec![(id.into(), label.into(), Some("Cmd+Alt+G".into()), true)]
+}
+
+/// ⌥⌘G clips the selected layer and pressing it again releases it, as Photoshop's one Create /
+/// Release Clipping Mask item does; the Layer menu reads Release Clipping Mask, with the same
+/// shortcut, while the key would release.
+#[test]
+fn clip_key_toggles_the_clipping_mask() {
+    let mut h = harness();
+    put_focus(&mut h, Place::Canvas);
+    let paint = h.state().session.active().unwrap().active_layer.unwrap();
+    assert_eq!(clip_items(&h), clip_item("layer.createClippingMask", "Create Clipping Mask"));
+    press(&mut h, "Cmd+Alt+G");
+    assert_eq!(logged(&h), ["layer.createClippingMask"]);
+    assert!(is_clipped(&h, paint));
+    assert_eq!(clip_items(&h), clip_item("layer.releaseClippingMask", "Release Clipping Mask"));
+    press(&mut h, "Cmd+Alt+G");
+    assert_eq!(logged(&h), ["layer.releaseClippingMask"]);
+    assert!(!is_clipped(&h, paint), "the second press releases it");
+    assert_eq!(clip_items(&h), clip_item("layer.createClippingMask", "Create Clipping Mask"));
+    press(&mut h, "Cmd+Z");
+    assert!(is_clipped(&h, paint), "one undo puts the clip back");
+}
+
+/// With several layers selected the key clips every one above the lowest, and releases them once
+/// they all are: a selection where only some are clipped clips the rest first.
+#[test]
+fn clip_key_toggles_several_selected_layers() {
+    let mut h = harness();
+    put_focus(&mut h, Place::Canvas);
+    let s = &mut h.state_mut().session;
+    let paint = s.active().unwrap().active_layer.unwrap();
+    let base = s.active().unwrap().doc.walk().into_iter().find(|(_, _, l)| l.name == "Hello").unwrap().2.id;
+    let top = photocraft_doc::LayerId(s.execute("layer.new.layer", json!({"name": "top"})).unwrap()["layer"].as_u64().unwrap());
+    s.execute("layer.createClippingMask", json!({"layer": paint.0})).unwrap();
+    s.execute("layer.select", json!({"layer": base.0, "mode": "replace"})).unwrap();
+    for id in [paint, top] {
+        s.execute("layer.select", json!({"layer": id.0, "mode": "add"})).unwrap();
+    }
+    assert_eq!(s.active().unwrap().selected_layers().len(), 3);
+    h.run_steps(2);
+    press(&mut h, "Cmd+Alt+G");
+    assert_eq!(logged(&h), ["layer.createClippingMask"], "the top layer isn't clipped yet");
+    assert!(is_clipped(&h, paint) && is_clipped(&h, top) && !is_clipped(&h, base));
+    press(&mut h, "Cmd+Alt+G");
+    assert_eq!(logged(&h), ["layer.releaseClippingMask"]);
+    assert!(!is_clipped(&h, paint) && !is_clipped(&h, top) && !is_clipped(&h, base));
 }
 
 #[test]

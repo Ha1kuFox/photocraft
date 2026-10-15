@@ -315,6 +315,60 @@ impl ColorState {
         }
     }
 
+    /// Whether opening `doc` asks about its profile first (Ask When Opening, for a mismatched or
+    /// missing profile), and if so what the prompt shows: the report [`Self::open_policy`]
+    /// would give, with `ask: true` and `action` the answer the policy suggests. Nothing is
+    /// changed: the answer is applied with [`Self::resolve_open`] before the document opens.
+    pub fn open_question(&self, doc: &Document) -> Option<Value> {
+        let space = mode_space(doc.mode);
+        if !matches!(space, ColorSpace::Rgb | ColorSpace::Cmyk | ColorSpace::Gray) {
+            return None;
+        }
+        let working = self.working(doc.mode);
+        let policy = self.settings.policy(doc.mode);
+        let embedded = doc.icc_profile.as_ref().and_then(|b| profile_from_bytes(b).ok()).filter(|p| p.color_space == space);
+        match embedded {
+            Some(emb) => {
+                let linear_hdr =
+                    doc.depth == SampleType::F32 && (emb.same_colors(Builtin::LinearSrgb.profile()) || emb.same_colors(photocraft_cms::builtin::linear_gray()));
+                if !self.settings.ask_on_mismatch || emb.same_colors(&working) || linear_hdr {
+                    return None;
+                }
+                let action = match policy {
+                    Policy::Preserve => "preserve",
+                    Policy::Off => "discard",
+                    Policy::Convert => "convert",
+                };
+                Some(
+                    json!({"embedded": emb.description, "working": working.description, "mismatch": true, "policy": policy.id(), "action": action, "ask": true}),
+                )
+            }
+            None if self.settings.ask_on_missing => {
+                Some(json!({"working": working.description, "policy": policy.id(), "missing": true, "action": "preserve", "ask": true}))
+            }
+            None => None,
+        }
+    }
+
+    /// Applies the answer to an [`Self::open_question`] to a document not opened yet:
+    /// `preserve` (keep the embedded profile, or leave an untagged file as is), `convert` to the
+    /// working space, `discard` the embedded profile, or `assignWorking` (untagged files).
+    pub fn resolve_open(&self, doc: &mut Document, action: &str) -> Result<()> {
+        match action {
+            "preserve" | "useEmbedded" => Ok(()),
+            "convert" | "convertToWorking" => convert_document(doc, &self.working(doc.mode), self.settings.intent(), self.settings.bpc),
+            "discard" | "off" => {
+                doc.icc_profile = None;
+                Ok(())
+            }
+            "assignWorking" => {
+                doc.icc_profile = Some(self.working(doc.mode).to_bytes());
+                Ok(())
+            }
+            other => Err(EngineError::Other(format!("unknown answer `{other}` (preserve|convert|discard|assignWorking)"))),
+        }
+    }
+
     /// Proofing state of a document (defaults: coated CMYK, relative colorimetric + BPC, off).
     pub fn proof(&self, doc: DocId) -> ProofView {
         self.proofs.get(&doc).cloned().unwrap_or_else(|| ProofView { gamut_threshold: photocraft_cms::gamut::DEFAULT_THRESHOLD, ..Default::default() })
@@ -1397,6 +1451,35 @@ mod settings_tests {
 
     // The Blend Text Colors Using Gamma test is `tests/text_gamma.rs`: it changes the
     // process-wide text gamma, which would race every unit test here that composites type.
+
+    #[test]
+    fn open_question_asks_only_when_set_and_resolve_open_applies_each_answer() {
+        let mut s = Session::new();
+        // Ask When Opening off: nothing to ask, mismatched or missing.
+        s.execute("edit.colorSettings", json!({"askOnMismatch": false, "askOnMissing": false})).unwrap();
+        assert!(s.color.open_question(&tagged("adobe-rgb-compat")).is_none());
+        let mut untagged = tagged("srgb");
+        untagged.icc_profile = None;
+        assert!(s.color.open_question(&untagged).is_none());
+        // On: a mismatch asks, suggesting the policy's answer; a matching profile never asks.
+        s.execute("edit.colorSettings", json!({"askOnMismatch": true, "askOnMissing": true, "policyRgb": "convert"})).unwrap();
+        let q = s.color.open_question(&tagged("adobe-rgb-compat")).unwrap();
+        assert_eq!((q["mismatch"].as_bool(), q["action"].as_str()), (Some(true), Some("convert")));
+        assert!(q["embedded"].as_str().unwrap().starts_with("Adobe RGB"));
+        assert!(s.color.open_question(&tagged("srgb")).is_none());
+        assert_eq!(s.color.open_question(&untagged).unwrap()["missing"], true);
+        // Asking changes nothing; the answer is applied to the document.
+        let mut d = tagged("adobe-rgb-compat");
+        s.color.resolve_open(&mut d, "preserve").unwrap();
+        assert!(desc(&d).unwrap().starts_with("Adobe RGB"));
+        s.color.resolve_open(&mut d, "convert").unwrap();
+        assert_eq!(desc(&d).as_deref(), Some("sRGB IEC61966-2.1"));
+        s.color.resolve_open(&mut d, "discard").unwrap();
+        assert_eq!(desc(&d), None);
+        s.color.resolve_open(&mut d, "assignWorking").unwrap();
+        assert_eq!(desc(&d).as_deref(), Some("sRGB IEC61966-2.1"));
+        assert!(s.color.resolve_open(&mut d, "explode").is_err());
+    }
 
     #[test]
     fn open_policies() {

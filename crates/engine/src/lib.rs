@@ -30,6 +30,7 @@ pub mod color_cmds;
 pub mod color_to_alpha_cmds;
 pub mod commands;
 pub mod comps_cmds;
+mod crop_fill;
 pub mod cutout_cmds;
 pub mod display_color;
 pub mod distort_cmds;
@@ -37,6 +38,7 @@ pub mod document_preset_cmds;
 pub mod edit_cmds;
 pub mod edit_menu_cmds;
 pub mod eraser_cmds;
+pub mod export_preset_cmds;
 pub mod exr_cmds;
 pub mod extra_cmds;
 pub mod file_cmds;
@@ -54,6 +56,7 @@ pub mod group_view_cmds;
 pub mod guide_layout;
 pub mod hidden_target;
 pub mod history_cmds;
+pub mod history_select_cmds;
 pub mod image_cmds;
 pub mod inspect;
 pub mod installed_profiles;
@@ -61,6 +64,7 @@ pub mod jobs;
 pub mod kys;
 pub mod layer_copy_cmds;
 pub mod layer_label_cmds;
+pub mod layer_list_cmds;
 pub mod layer_mask_props_cmds;
 pub mod layer_menu_cmds;
 pub mod layer_multi_cmds;
@@ -99,6 +103,7 @@ pub mod sample_cmds;
 pub mod sampler_cmds;
 pub mod select_extra_cmds;
 pub mod selection_cmds;
+pub mod shortcut_sets;
 pub mod slice_cmds;
 pub mod smart_cmds;
 pub mod smartselect_cmds;
@@ -197,6 +202,8 @@ pub struct DocState {
     /// Increments on every change; UIs re-render when it moves.
     pub revision: u64,
     pub saved_revision: u64,
+    /// How much of `revision` came from view-only changes (channel eyes, targeting): pixel caches can ignore those.
+    pub view_revision: u64,
     /// Area changed by the latest revision (None = assume everything changed).
     pub last_damage: Option<photocraft_geom::Rect>,
     /// Coalescing key of the latest history step (see [`Session::execute`]'s `coalesce` param).
@@ -228,6 +235,20 @@ pub struct DocState {
 }
 
 impl DocState {
+    /// Trim the history to its budget, counting the tiles only History panel snapshots hold
+    /// against it too (#4530). Returns how many states were dropped.
+    pub fn trim_history(&mut self) -> usize {
+        let snaps: Vec<&Document> = self.snapshots.iter().map(|s| &*s.doc).collect();
+        self.history.trim_with(&self.doc, &snaps)
+    }
+
+    /// Pixel bytes of the document, the tiles only its history holds and the tiles only its
+    /// History panel snapshots hold.
+    pub fn memory_bytes(&self) -> usize {
+        let snaps: Vec<&Document> = self.snapshots.iter().map(|s| &*s.doc).collect();
+        self.history.pixel_bytes(&self.doc).saturating_add(self.history.extra_bytes(&self.doc, &snaps))
+    }
+
     pub fn new(doc: Document, path: Option<String>) -> Self {
         let active_layer = doc.top_layer();
         let mut history = History::default();
@@ -242,6 +263,7 @@ impl DocState {
             source_read_only: false,
             revision: 1,
             saved_revision: 1,
+            view_revision: 0,
             last_damage: None,
             coalesce: None,
             channel_view: Default::default(),
@@ -295,6 +317,13 @@ pub struct ToolState {
     /// preset stays "the current brush" so `brush.presets.update` can overwrite it); cleared when
     /// the brush is reset or the preset is gone.
     pub current_preset: Option<String>,
+    /// Bumped whenever `brush` or `current_preset` changes ([`ToolState::brush_changed`]). The
+    /// last-brush persistence watches it instead of comparing the brush itself, so an unchanged
+    /// brush costs a counter compare per frame, not a clone and serialise.
+    pub brush_rev: u64,
+    /// The revision whose value is in `Preferences::last_brush` (a restored one counts as saved):
+    /// [`brush_rev`](Self::brush_rev) == `brush_saved_rev` means there is nothing new to write.
+    pub brush_saved_rev: u64,
     /// A layer mask is the edit target ([`ToolState::target_mask`]).
     pub mask_targeted: bool,
     /// The foreground/background pair of the edit target that isn't current: the layer pixels'
@@ -329,6 +358,13 @@ impl ToolState {
     /// background (reveal-paint first).
     pub const MASK_COLORS: [[f32; 4]; 2] = [[1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0]];
 
+    /// Note that `brush` or `current_preset` changed. Every setter of either (commands and the
+    /// shell's tool-switch paths) calls this; the last-brush persistence only serialises when the
+    /// revision has moved since the stored value ([`Self::brush_saved_rev`]).
+    pub fn brush_changed(&mut self) {
+        self.brush_rev = self.brush_rev.wrapping_add(1);
+    }
+
     /// Switch the edit target between layer pixels and a layer mask. Like Photoshop, the mask and
     /// the pixels keep separate app-wide foreground/background pairs: changing the target puts
     /// the current pair aside and brings back the other one, so colours picked while a mask is
@@ -361,6 +397,8 @@ impl Default for ToolState {
             mixer: Default::default(),
             brush_gesture: None,
             current_preset: None,
+            brush_rev: 0,
+            brush_saved_rev: 0,
             mask_targeted: false,
             other_colors: Self::MASK_COLORS,
             cmyk_picks: Vec::new(),
@@ -439,6 +477,11 @@ pub struct Session {
     /// A finished live stroke offered to the `paint.stroke` / `paint.pencil` that commits it
     /// ([`Session::offer_live_stroke`]).
     pub(crate) live_commit: Option<brush_cmds::LiveCommit>,
+    /// Documents a background open decoded but held back until the user answers the profile
+    /// prompt ([`ColorState::open_question`](color_cmds::ColorState::open_question)): `(id,
+    /// document, source read-only)`. The shell takes them with [`Session::take_held_open`].
+    held_opens: Vec<(u64, Document, bool)>,
+    next_held_open: u64,
 }
 
 /// Move item `i` of `v` to position `to`, clamped to the end. Returns where it went; `None` when
@@ -522,6 +565,21 @@ impl Session {
         let i = self.docs.len() - 1;
         self.active = Some(i);
         i
+    }
+
+    /// Holds a decoded document back from opening (see `held_opens`); returns its id.
+    pub(crate) fn hold_open(&mut self, doc: Document, source_read_only: bool) -> u64 {
+        self.next_held_open = self.next_held_open.wrapping_add(1);
+        self.held_opens.push((self.next_held_open, doc, source_read_only));
+        self.next_held_open
+    }
+
+    /// Takes a document a background open held back for the profile prompt: the document and
+    /// whether its source is read-only. `None` when there is no such document (already taken).
+    pub fn take_held_open(&mut self, id: u64) -> Option<(Document, bool)> {
+        let i = self.held_opens.iter().position(|(h, _, _)| *h == id)?;
+        let (_, doc, read_only) = self.held_opens.remove(i);
+        Some((doc, read_only))
     }
 
     pub fn close(&mut self, index: usize) -> Option<DocState> {
@@ -699,7 +757,7 @@ impl Session {
         if key.is_none() || st.coalesce != key || !st.history.can_undo() {
             st.history.set_current_layers(prior);
             st.history.record(label, before, layers);
-            st.history.trim(&st.doc);
+            st.trim_history();
         } else {
             st.history.set_current_layers(layers);
         }

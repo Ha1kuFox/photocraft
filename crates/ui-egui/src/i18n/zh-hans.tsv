@@ -386,6 +386,7 @@
 	Update Modified Content	更新已修改的内容
 	Update All Modified Content	更新所有已修改的内容
 	Stack Mode	堆栈模式
+	Choose Stack Mode:	选择堆栈模式：
 	Entropy	熵
 	Kurtosis	峰度
 	Maximum	最大值
@@ -557,6 +558,13 @@
 	Blur	模糊
 	Blur Gallery	模糊库
 	Field Blur…	场景模糊…
+# Field Blur pins (#3373)
+	No pin selected	未选择图钉
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	单击图像以添加图钉；拖动图钉可移动它，拖动其圆环可更改模糊程度。按 Delete 键删除所选图钉。
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	拖动轮廓上的手柄可调整大小并旋转，拖动方块可将角变圆，拖动内部的点可设置模糊开始的位置。
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	拖动图钉可移动条带，拖动其圆环可更改模糊程度。拖动实线可加宽清晰条带，拖动虚线可设置过渡，拖动圆点可旋转。
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	拖动轮廓上的手柄可调整大小并旋转；圆环设置模糊角度。
+	Blur Angle	模糊角度
 	Iris Blur…	光圈模糊…
 	Tilt-Shift…	移轴模糊…
 	Path Blur…	路径模糊…
@@ -879,6 +887,7 @@
 	Background	背景
 	Background Color	背景颜色
 	Background Contents	背景内容
+	Custom background color	自定背景颜色
 	Balance	平衡
 	Baseline	基线
 	Baseline shift	基线偏移
@@ -985,7 +994,6 @@
 	Contiguous	连续
 	Contrast	对比度
 	Control:	控制：
-	Convert document's colors to the working space	将文档颜色转换到工作空间
 	Convert to sRGB	转换为 sRGB
 	Copies	份数
 	Copper	铜色
@@ -1041,6 +1049,7 @@
 	Delete Group	删除组
 	Delete Layer Mask	删除图层蒙版
 	Delete Layers	删除图层
+	Add Shortcut	添加快捷键
 	Delete Shortcut	删除快捷键
 	Delete Timeline	删除时间轴
 	Delete Tool Preset	删除工具预设
@@ -1583,7 +1592,6 @@
 	Use Default	使用默认值
 	Use Legacy	使用旧版
 	Use Measurement Scale	使用测量比例
-	Use the embedded profile (instead of the working space)	使用嵌入的配置文件（替代工作空间）
 	Uses the foreground and background colors.	使用前景色和背景色。
 	Variables bind a layer's visibility, text or pixels to a named data slot.	变量将图层的可见性、文字或像素绑定到具名数据项。
 	Vertical scale	垂直缩放
@@ -1910,6 +1918,8 @@
 	Camera Raw Defaults	Camera Raw 默认设置
 	Canvas border	画布边框
 	Show canvas dots	显示画布圆点
+	Clip thumbnails to layer bounds	将缩略图裁剪到图层边界
+	Clip Thumbnails to Layer Bounds	将缩略图裁剪到图层边界
 	Canvas color	画布颜色
 	Canvas custom color	画布自定颜色
 	Color picker	拾色器
@@ -2098,7 +2108,8 @@
 	Expand group  (⌥-click: all groups)	展开组  (⌥-单击：所有组)
 	Fade steps	渐隐步数
 	Hide the layer's effects  (⌥-click: all layers)	隐藏图层效果  (⌥-单击：所有图层)
-	Import Brushes… (.abr)	导入画笔… (.abr)
+	Import Brushes… (.abr or image)	导入画笔… (.abr 或图像)
+	Import Brush from Image…	从图像导入画笔…
 	Move Group Down	向下移动组
 	Move Group Up	向上移动组
 	Reset the brush to the defaults	将画笔重置为默认值
@@ -2263,6 +2274,9 @@ cameraRaw	Blending	混合
 # Layer navigation, copy transforms and cancellable opening (labels added on main since this catalog).
 	Cancel opening	取消打开
 	Cancelled opening {name}	已取消打开 {name}
+	The document “{name}” does not have an embedded {mode} profile.	文档“{name}”没有嵌入的 {mode} 配置文件。
+	The document “{name}” has an embedded color profile that does not match the current {mode} working space.	文档“{name}”嵌入的颜色配置文件与当前的 {mode} 工作空间不匹配。
+	Working: {working}	工作空间：{working}
 	Developing {name}	正在处理 {name}
 	Cancelled {label}	已取消 {label}
 	Esc to cancel	按 Esc 取消
@@ -2446,6 +2460,7 @@ cameraRaw	Blending	混合
 	Violet	紫罗兰色
 	Reset	复位
 	Large document: redrawing on the CPU	大型文档：正在用 CPU 重绘
+	Redrawing	正在重绘
 	This redraw took {seconds} s on the CPU.	此次 CPU 重绘耗时 {seconds} 秒。
 	Edits that change the whole document, such as a layer's blend mode, opacity or visibility, redraw all of it.	更改整个文档的编辑（如图层的混合模式、不透明度或可见性）会重绘整个文档。
 	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	图层超出 GPU 内存预算。在 首选项 › 性能 中提高内存使用量可增加预算，最多为本机内存的四分之一。
@@ -2514,6 +2529,8 @@ fontWeight	Italic	斜体
 	Color Picker (Layer Style Color)	拾色器（图层样式颜色）
 	Auto Hide Notifications	自动隐藏通知
 	Notification Duration (seconds)	通知持续时间（秒）
+	Bundle Arrow-Key Nudges	合并方向键微移
+	Nudge Bundle Pause (ms)	微移合并间隔（毫秒）
 	Appearance Mode	外观模式
 	Dark Theme	深色主题
 	Light Theme	浅色主题
@@ -2641,6 +2658,7 @@ cameraData	Lens	镜头
 	Search settings…	搜索设置…
 	No matching settings	没有匹配的设置
 	Loading fonts…	正在加载字体…
+	Response curve	响应曲线
 	Tool	工具
 	Simulate Pressure	模拟压力
 	Stroke Path…	描边路径…
@@ -2690,6 +2708,7 @@ curves	Smooth	平滑
 	Select the crop presets to delete	选择要删除的裁剪预设
 	Enter a name for the crop preset	输入裁剪预设的名称
 	There is no crop size or ratio to save	没有可保存的裁剪大小或比例
+	Presentation	演示
 
 # Color Sampler (added with the i18n coverage repair)
 	Click to place · Alt-click or drag off-canvas to remove	单击以放置 · Alt 单击或拖到画布外以移除
@@ -2717,6 +2736,7 @@ curves	Smooth	平滑
 	Remove after each stroke	每次描边后移除
 	Apply the removal ({key})	应用移除 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	待移除的描边：{n}（Enter 应用，Esc 取消）
+	Show home recent files	在主屏幕上显示最近的文件
 	Clear Brush Controls	清除画笔控件
 	Reset All Locked Settings	复位所有锁定的设置
 	Copy Texture to Other Tools	将纹理复制到其他工具
@@ -2731,6 +2751,8 @@ curves	Smooth	平滑
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	已将 {n} 个动作存储到 {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	已省略 {n} 个没有 Photoshop 对应功能的步骤
 
+	File Naming	文件命名
+	Starting serial	起始序号
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	插入停止…
 	Save Set…	存储组…
@@ -2741,5 +2763,54 @@ curves	Smooth	平滑
 	Action playback stopped	动作播放已停止
 	Step {step} is waiting for its dialog	步骤 {step} 正在等待其对话框
 @plural	{n} action|{n} actions	{n} 个动作
+	Background (Default)	背景（默认）
+	Content-Aware Fill	内容识别填充
+# Batch / Image Processor
+	Include All Subfolders	包含所有子文件夹
 	Auto Add/Delete	自动添加/删除
+
+# Native Windows printing qualification
+	Don't also tick Mirror Image in Print Settings…: the two flips cancel out.	不要同时勾选打印设置中的镜像：两次翻转会相互抵消。
+	Print Settings…	打印设置…
+	Remember to turn off the printer's own colour management in Print Settings…	请记得在打印设置中关闭打印机自身的色彩管理…
+	Sent to {printer}	已发送到 {printer}
+	set in Print Settings…	在打印设置中设置…
 	ICO is limited to 256 × 256 pixels	ICO 最大为 256 × 256 像素
+# Embedded Profile Mismatch: profile names beside the choices, Remember this choice
+	Use the embedded profile ({profile})	使用嵌入的配置文件（{profile}）
+	Convert to the working space ({profile})	转换到工作空间（{profile}）
+	Remember this choice for future images	以后打开的图像都使用此选择
+	Turn the prompt back on with Ask On Mismatch in Edit › Color Settings.	可在 编辑 › 颜色设置 中打开 Ask On Mismatch，重新显示此提示。
+	Button Mode	按钮模式
+	Button Mode On	按钮模式 开
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	界面变暗
+	Lighten Interface	界面变亮
+# Bevel & Emboss Technique.
+	Technique	方法
+	Chisel Hard	雕刻清晰
+	Chisel Soft	雕刻柔和
+	Open color-less EXR as ACEScg	将无色彩空间信息的 EXR 以 ACEScg 打开
+# Export As metadata and profile options
+	Color Profile	颜色配置文件
+	EXIF	EXIF
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	编辑所选参考线
+	Clear Selected Guides	清除所选参考线
+	Delete this set	删除此组
+	New Set…	新建组…
+	PhotoCraft Defaults	PhotoCraft 默认值
+	Save a list of these shortcuts as a web page	将这些快捷键的列表存储为网页
+	Save the changes to this set	将更改存储到此组
+	Save these shortcuts as a .kys file	将这些快捷键存储为 .kys 文件
+	Save these shortcuts as a new set	将这些快捷键存储为新组
+	Set deleted.	已删除组。
+	Set saved.	已存储组。
+	Set:	组：
+	Summarize…	摘要…
+	There are too many sets: delete one first.	组太多：请先删除一个。
+	set name	组名称
+	{set} (modified)	{set}（已修改）
+	Random	随机

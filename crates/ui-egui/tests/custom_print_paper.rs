@@ -10,6 +10,8 @@ fn app() -> (PhotocraftApp, u64) {
     let id = open_print(&mut app);
     // Every UI path in these fixtures is safe even if an unexpected Enter confirms the dialog.
     app.ui.dialog_mut(id).unwrap().fields.insert("dryRun".into(), json!(true));
+    // Exercise PDF paper controls even when native printers are available, on every OS.
+    app.ui.dialog_mut(id).unwrap().fields.insert("__printers".into(), json!(["Test native printer"]));
     (app, id)
 }
 

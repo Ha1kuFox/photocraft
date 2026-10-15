@@ -39,6 +39,7 @@ jobs:
   # platform: the app shell, UI, text and fonts, GPU, pen input, build scripts or the lockfile.
   # macOS is tested only by release.yml.
   platforms:
+    timeout-minutes: 10
     name: select platforms
     runs-on: ubuntu-latest
     outputs:
@@ -65,7 +66,7 @@ jobs:
           # The browser build (a fat-LTO wasm build) runs only when something it compiles or
           # packages changed: the web app and its packaging, crate sources and manifests (the web
           # build compiles nearly every crate), the workspace manifests and this workflow.
-          if git diff --name-only "$BASE" HEAD | grep -Eq '^(apps/photocraft-web/|packaging/web/|packaging/env\.sh$|crates/[^/]+/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.github/workflows/ci\.yml$)'; then
+          if git diff --name-only "$BASE" HEAD | grep -Eq '^(apps/photocraft-web(-boot)?/|packaging/web/|packaging/env\.sh$|crates/[^/]+/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.github/workflows/ci\.yml$)'; then
             echo "web=true" >> "$GITHUB_OUTPUT"
           else
             echo "web=false" >> "$GITHUB_OUTPUT"
@@ -77,6 +78,7 @@ jobs:
           fi
 
   test:
+    timeout-minutes: 100
     name: test (${{ matrix.os }})
     needs: platforms
     runs-on: ${{ matrix.os }}
@@ -111,9 +113,23 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
+      # The cheap checks run first: a format, lint, layering or stale-scorecard failure is red
+      # after a few minutes instead of after the test passes (#6119). Clippy restores main's cache.
       - name: Format
         if: runner.os == 'Linux'
         run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked --features heif -- -D warnings
+
+      - name: Dependency layering
+        run: cargo xtask layers
+
+      # docs/scorecard.md must match its sources (checklists, budgets, baseline, corpus floors,
+      # prefs audit). Static: it reads committed files only, no benchmarks run here.
+      - name: Scorecard up to date
+        if: runner.os == 'Linux'
+        run: cargo xtask scorecard --check
 
       # `--features heif`: official builds open HEIC photos via the optional photocraft-heif crate.
       - name: Test
@@ -145,19 +161,8 @@ jobs:
           CRAFT_FONTS_REQUIRED: "1"
         run: cargo test --workspace --locked --features heif
 
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked --features heif -- -D warnings
-
-      - name: Dependency layering
-        run: cargo xtask layers
-
-      # docs/scorecard.md must match its sources (checklists, budgets, baseline, corpus floors,
-      # prefs audit). Static: it reads committed files only, no benchmarks run here.
-      - name: Scorecard up to date
-        if: runner.os == 'Linux'
-        run: cargo xtask scorecard --check
-
   corpus:
+    timeout-minutes: 30
     # Real-file corpus tests (cargo feature `corpus`), on every PR and on main. The corpora are
     # pinned in xtask/src/corpus_pins.rs and sha256-verified (xtask/*.sha256) after both a cache
     # restore and a download; a missing corpus fails the tests. The cache key changes only when a
@@ -190,6 +195,7 @@ jobs:
         run: cargo xtask test-corpus
 
   wasm:
+    timeout-minutes: 30
     name: wasm32 check
     runs-on: ubuntu-latest
     steps:
@@ -206,6 +212,7 @@ jobs:
         run: cargo xtask wasm
 
   web:
+    timeout-minutes: 60
     name: web build and wasm size gate
     # PRs run it only when web-relevant files change (see `platforms`); main always does.
     needs: platforms
@@ -229,8 +236,8 @@ jobs:
           curl -fsSL "https://github.com/trunk-rs/trunk/releases/download/v${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
             | tar -xz -C "$HOME/.cargo/bin" trunk
           trunk --version
-      # package.sh runs Trunk's release build, validates relative URLs, checks the 24 MiB
-      # wasm limit and exercises the same packaging step used by release.yml.
+      # package.sh runs Trunk's release builds, validates relative URLs, cuts the wasm into
+      # parts, checks the 24 MiB per-file limit and exercises the packaging step release.yml uses.
       - name: Build and verify browser release
         run: packaging/web/package.sh
       - name: Report wasm size
@@ -241,15 +248,19 @@ jobs:
             echo
             echo "| File | Bytes | MiB | Limit |"
             echo "| --- | ---: | ---: | ---: |"
+            row() { echo "| $1 | $2 | $(awk -v n="$2" 'BEGIN { printf "%.2f", n / 1048576 }') | $3 |"; }
+            # The app's wasm as built; it ships gzipped in parts, so only the download grows with it.
             for wasm in dist/web/*.wasm; do
               [ -f "$wasm" ] || continue
-              bytes=$(wc -c < "$wasm" | tr -d ' ')
-              mib=$(awk -v n="$bytes" 'BEGIN { printf "%.2f", n / 1048576 }')
-              echo "| $(basename "$wasm") | $bytes | $mib | 24 MiB |"
+              row "$(basename "$wasm")" "$(wc -c < "$wasm" | tr -d ' ')" "none"
             done
+            # What a host sees: the largest file of the packaged site.
+            largest=$(find target/web-package -type f -printf '%s %f\n' | sort -n | tail -1)
+            row "largest file in the site: ${largest#* }" "${largest%% *}" "24 MiB"
           } >> "$GITHUB_STEP_SUMMARY"
 
   fuzz:
+    timeout-minutes: 60
     name: fuzz (${{ matrix.target.crate }}/${{ matrix.target.name }})
     # Placeholder: manual trigger only until a nightly schedule is enabled.
     if: github.event_name == 'workflow_dispatch' && inputs.fuzz

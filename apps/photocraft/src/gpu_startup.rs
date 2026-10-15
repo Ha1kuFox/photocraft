@@ -177,6 +177,12 @@ pub fn plan_with_mode(pref: GpuBackend, mode: RenderingMode, crashed: Option<&Ma
     plan(backend, crashed, env, safe_gpu, os)
 }
 
+/// Persist successful hardware fallbacks, but never silently pin CPU mode.
+/// The recovery dialog explicitly stores CPU mode when the user chooses it.
+pub fn backend_to_remember(plan: &Plan) -> Option<GpuBackend> {
+    (plan.remember && plan.backend != GpuBackend::Cpu).then_some(plan.backend)
+}
+
 /// Instance backends for `plan` (`None`: egui's default, which honours `WGPU_BACKEND`).
 pub fn backends(plan: &Plan, os: Os) -> Option<wgpu::Backends> {
     if plan.env.is_some() {
@@ -227,9 +233,10 @@ pub struct Candidate {
 /// Rank of an adapter (lower is better): high-performance device types first (egui's power
 /// preference) or software adapters first for `cpu`; then backends, with DX12 before Vulkan for
 /// Intel on Windows. For `cpu`, any GL adapter comes before Vulkan, which is only the fallback
-/// for presenting the window (see [`backends`]).
+/// for presenting the window (see [`backends`]). On Windows GL comes after every other adapter,
+/// WARP included: GL there (VMware's SVGA3D, GL-only old GPUs) drew a black window (#5191, #1788).
 fn rank(a: &Candidate, backend: GpuBackend, os: Os) -> (u8, u8, u8) {
-    let fallback = u8::from(backend == GpuBackend::Cpu && a.backend == wgpu::Backend::Vulkan);
+    let fallback = u8::from((backend == GpuBackend::Cpu && a.backend == wgpu::Backend::Vulkan) || (os == Os::Windows && a.backend == wgpu::Backend::Gl));
     let ty = match a.device_type {
         wgpu::DeviceType::DiscreteGpu => 0,
         wgpu::DeviceType::IntegratedGpu => 1,
@@ -541,6 +548,27 @@ mod tests {
         assert_eq!(plan(Auto, None, Some("dx12"), true, Os::Windows).backend, Cpu);
     }
 
+    /// #3483: A temporary CPU recovery must not change the next launch.
+    #[test]
+    fn cpu_recovery_requires_explicit_confirmation_to_persist() {
+        let gl_crash = crashed("gl", "gl");
+        let cpu = plan_with_mode(Auto, RenderingMode::Auto, Some(&gl_crash), None, false, Os::Other);
+        assert_eq!((cpu.backend, cpu.remember), (Cpu, true));
+        assert_eq!(backend_to_remember(&cpu), None);
+
+        let safe = plan_with_mode(Auto, RenderingMode::Auto, None, None, true, Os::Other);
+        assert_eq!(safe.backend, Cpu);
+        assert_eq!(backend_to_remember(&safe), None);
+        // An unconfirmed fallback leaves the original automatic selection intact.
+        assert_eq!(plan_with_mode(Auto, RenderingMode::Auto, None, None, false, Os::Other).backend, Auto);
+        // A working hardware fallback can still be remembered.
+        let vk_crash = crashed("auto", "vulkan");
+        let gl = plan_with_mode(Auto, RenderingMode::Auto, Some(&vk_crash), None, false, Os::Other);
+        assert_eq!(backend_to_remember(&gl), Some(Gl));
+        // CPU explicitly selected in preferences still works.
+        assert_eq!(plan_with_mode(Auto, RenderingMode::Cpu, None, None, false, Os::Other).backend, Cpu);
+    }
+
     #[test]
     fn safe_gpu_forces_the_cpu_for_one_launch() {
         let p = plan(Vulkan, Some(&crashed("vulkan", "vulkan")), None, true, Os::Other);
@@ -606,6 +634,20 @@ mod tests {
         assert_eq!(pick(&[gl, nvidia_vk], Cpu, Os::Other), Some(1));
         // Other backends rank as before.
         assert_eq!(pick(&[nvidia_gl, nvidia_vk], Auto, Os::Other), Some(1));
+    }
+
+    /// #5191, #1788: a Windows VM offers VMware's SVGA3D over GL (`Other`) and WARP (`Cpu`, DX12).
+    /// GL drew a black window; WARP works. GL stays the last resort.
+    #[test]
+    fn windows_auto_prefers_warp_over_gl() {
+        use wgpu::{Backend as B, DeviceType as T};
+        let svga_gl = cand(0x15ad, T::Other, B::Gl);
+        let warp = cand(0x1414, T::Cpu, B::Dx12);
+        assert_eq!(pick(&[svga_gl, warp], Auto, Os::Windows), Some(1));
+        assert_eq!(pick(&[cand(INTEL, T::IntegratedGpu, B::Gl), warp], Auto, Os::Windows), Some(1));
+        assert_eq!(pick(&[svga_gl], Auto, Os::Windows), Some(0));
+        // Elsewhere GL keeps its rank.
+        assert_eq!(pick(&[svga_gl, warp], Auto, Os::Other), Some(0));
     }
 
     #[test]

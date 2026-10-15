@@ -334,12 +334,52 @@ fn shadows_highlights_params(p: &Value) -> ShadowsHighlights {
 }
 
 fn replace_color(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "image.adjustments.replaceColor";
     let c = crate::commands::color_param(p, "color", s.tools.foreground);
     let fuzz = num(p, "fuzziness", 40.0).clamp(0.0, 200.0);
     let (h, sat, l) = (num(p, "hue", 0.0).clamp(-180.0, 180.0), num(p, "saturation", 0.0).clamp(-100.0, 100.0), num(p, "lightness", 0.0).clamp(-100.0, 100.0));
-    rgba_edit(s, "Replace Color", p, |px, _| {
-        tone::replace_color(px, [c[0], c[1], c[2]], fuzz, h, sat, l);
+    // Localized Color Clusters, as in Select › Color Range: the colour only matches within Range
+    // (a percentage of the canvas's longer side) of where it was picked.
+    let points = sample_points(p).map_err(|m| bad(CMD, m))?;
+    let localized = if p.get("localized").and_then(Value::as_bool).unwrap_or(false) {
+        if points.is_empty() {
+            return Err(bad(CMD, "localized clusters need eyedropper `points` (where the colour was picked)"));
+        }
+        let canvas = s.active().ok_or(EngineError::NoDocument)?.doc.bounds();
+        Some(num(p, "range", 100.0).clamp(0.0, 100.0) / 100.0 * canvas.width().max(canvas.height()) as f32)
+    } else {
+        None
+    };
+    rgba_edit(s, "Replace Color", p, |px, r| match localized {
+        Some(radius) => {
+            let samples: Vec<_> = points
+                .iter()
+                .map(|&(x, y)| photocraft_algo::selection::RangeSample { color: [c[0], c[1], c[2]], at: Some((x - r.x0 as f32, y - r.y0 as f32)) })
+                .collect();
+            let mask = photocraft_algo::selection::color_range_samples(px, r.width() as usize, &samples, fuzz, Some(radius));
+            tone::replace_color_masked(px, &mask, h, sat, l);
+        }
+        None => {
+            tone::replace_color(px, [c[0], c[1], c[2]], fuzz, h, sat, l);
+        }
     })
+}
+
+/// The `points` of a command (`[[x, y], …]` in document pixels), or a message saying what is wrong.
+fn sample_points(p: &Value) -> std::result::Result<Vec<(f32, f32)>, String> {
+    let Some(pts) = p.get("points") else { return Ok(Vec::new()) };
+    let pts = pts.as_array().ok_or("`points` must be [[x, y], …]")?;
+    pts.iter()
+        .map(|pt| {
+            pt.as_array()
+                .and_then(|a| match a.as_slice() {
+                    [x, y] => Some((x.as_f64()? as f32, y.as_f64()? as f32)),
+                    _ => None,
+                })
+                .filter(|(x, y)| x.is_finite() && y.is_finite())
+                .ok_or_else(|| format!("bad point {pt} in `points` (want [x, y])"))
+        })
+        .collect()
 }
 
 /// Straight RGBA pixels and an optional coverage mask for a document's layer (or its composite).
@@ -454,7 +494,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "image.adjustments.replaceColor",
             "Replace Color…",
             ["Image", "Adjustments"],
-            r##"{"color":color,"fuzziness":0..200=40,"hue":-180..180=0,"saturation":-100..100=0,"lightness":-100..100=0} (color: "#rrggbb", default the foreground colour)"##,
+            r##"{"localized":bool=false,"color":color,"fuzziness":0..200=40,"range":0..100=100,"hue":-180..180=0,"saturation":-100..100=0,"lightness":-100..100=0,"points":[[x,y],…]?} (color: "#rrggbb", default the foreground colour; Localized Color Clusters: "points" where the colour was picked, "range" % of the longer side)"##,
             has_pixels,
             replace_color
         ),

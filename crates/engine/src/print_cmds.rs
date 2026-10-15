@@ -14,6 +14,8 @@
 
 use std::io::Write as _;
 
+mod windows_marks;
+
 use photocraft_color::ColorMode;
 use photocraft_doc::{Document, LayerContent, SmartSource};
 use serde_json::{Value, json};
@@ -388,6 +390,21 @@ fn render_and_spool(doc: &Document, p: &Value, cmd: &str) -> Result<Value> {
     let send = p.get("send").and_then(Value::as_bool).unwrap_or(output.is_none());
     let copies = crate::commands::int(p, "copies").unwrap_or(1).clamp(1, 999) as u32;
     let dry = p.get("dryRun").and_then(Value::as_bool).unwrap_or(false);
+    // Shared RGB transport handles compatible Windows pages; PDF-only content retains its route.
+    // Sending follows the shared command contract; fuzz tests explicitly request dryRun.
+    // The worker returns its result before repeat settings and hooks are applied once.
+    let handling = p.get("colorHandling").and_then(Value::as_str).unwrap_or("printerManages");
+    if cfg!(windows) && send && !dry && output.is_none() && native_rgb_compatible(&page, handling) {
+        require_printing_enabled()?;
+        let printed = print_windows(&page, p, &doc.name, copies)?;
+        return Ok(json!({
+            "pdf": Value::Null, "paper": [pw, ph], "imageRect": [x, y, w, h], "emulsionDown": emulsion_down, "scale": scale * 100.0,
+            "copies": copies, "command": Value::Null, "sent": true, "spooler": printed, "color": color,
+        }));
+    }
+    if cfg!(windows) && send && !dry && output.is_none() && printer_settings(p)?.is_some() {
+        return Err(other("the selected color profile or page text requires PDF printing. Save as PDF, or clear Print Settings to use PDF printing."));
+    }
     let pdf = print_pdf(&page);
     let job = craft_print::Job {
         printer: p.get("printer").and_then(Value::as_str).filter(|v| !v.is_empty()).map(str::to_string),
@@ -409,19 +426,22 @@ fn render_and_spool(doc: &Document, p: &Value, cmd: &str) -> Result<Value> {
     let mut sent = false;
     let mut spool = Value::Null;
     if send && !dry {
-        // The last line of defence: a test or fuzz run must never print a page (`dryRun` still
-        // renders and reports the command).
-        if printing_disabled() {
-            return Err(other(
-                "printing is disabled in this process (photocraft_engine::print_cmds::disable_printing or PHOTOCRAFT_NO_PRINT); use dryRun: true",
-            ));
-        }
+        require_printing_enabled()?;
         spool = json!(craft_print::submit(&pdf, &job).map_err(other)?);
         sent = true;
     }
     Ok(
         json!({"pdf": pdf_path, "bytes": pdf.len(), "paper": [pw, ph], "imageRect": [x, y, w, h], "emulsionDown": emulsion_down, "scale": scale * 100.0, "copies": copies, "command": command, "sent": sent, "spooler": spool, "color": color}),
     )
+}
+
+/// Keep CMYK output profiles and page text on the existing PDF composition path. GDI currently
+/// draws RGB/gray and vector marks only; it must never silently omit requested page content.
+fn native_rgb_compatible(page: &PrintPage, handling: &str) -> bool {
+    matches!(page.image.channels, 1 | 3)
+        && (page.image.icc.is_none() || matches!(handling, "photocraftManages" | "photoshopManages" | "noColorManagement"))
+        && page.description.as_deref().is_none_or(str::is_empty)
+        && page.label.as_deref().is_none_or(str::is_empty)
 }
 
 /// Print One Copy repeats these.
@@ -434,6 +454,101 @@ fn remember_print(s: &mut Session, p: &Value) {
         o.remove("send");
     }
     s.file_menu.last_print = Some(remembered);
+}
+
+/// The `printer` parameter, or the system's default printer.
+fn printer_name(p: &Value) -> Result<String> {
+    if let Some(name) = p.get("printer").and_then(Value::as_str).filter(|v| !v.trim().is_empty()) {
+        return Ok(name.to_string());
+    }
+    craft_print::rgb::default_printer().map_err(other)?.ok_or_else(|| other("no printer chosen and no default printer is set"))
+}
+
+/// The driver settings chosen with Print Settings… (`printerSettings`, hex), when any.
+fn printer_settings(p: &Value) -> Result<Option<craft_print::rgb::DevMode>> {
+    match p.get("printerSettings").and_then(Value::as_str).filter(|v| !v.is_empty()) {
+        Some(hex) => craft_print::rgb::DevMode::from_hex(hex).map(Some).map_err(|e| bad("file.print", e.to_string())),
+        None => Ok(None),
+    }
+}
+
+/// The page's image as 8-bit RGB rows (gray expanded), mirrored for Emulsion Down.
+pub fn page_rgb(page: &PrintPage) -> Result<Vec<u8>> {
+    let img = &page.image;
+    let (w, h) = (img.width as usize, img.height as usize);
+    let mut rgb = match img.channels {
+        3 => img.data.clone(),
+        1 => img.data.iter().flat_map(|g| [*g, *g, *g]).collect(),
+        _ => return Err(other("this printer profile is CMYK; Windows printers take RGB, so choose the printer's own (RGB) profile")),
+    };
+    let row = w.checked_mul(3).ok_or_else(|| other("print image is too large"))?;
+    if row == 0 || row.checked_mul(h) != Some(rgb.len()) {
+        return Err(other("nothing to print"));
+    }
+    if page.emulsion_down {
+        for row in rgb.chunks_exact_mut(row) {
+            row.as_chunks_mut::<3>().0.reverse();
+        }
+    }
+    Ok(rgb)
+}
+
+/// The image box with its origin at the sheet's top-left (GDI's), mirrored for Emulsion Down.
+pub fn page_rect_top_left(page: &PrintPage) -> (f64, f64, f64, f64) {
+    let (pw, ph) = page.paper;
+    let (x, y, w, h) = page.rect;
+    let x = if page.emulsion_down { pw - x - w } else { x };
+    (x, ph - y - h, w, h)
+}
+
+/// Prints `page` on a Windows printer. Corner/centre crop and registration marks are drawn with
+/// GDI vector calls, matching the PDF path's geometry; description and label text are still
+/// PDF-only (no font/text layout in the GDI path yet).
+fn print_windows(page: &PrintPage, p: &Value, title: &str, copies: u32) -> Result<Value> {
+    let printer = printer_name(p)?;
+    let settings = printer_settings(p)?;
+    let device_page = craft_print::rgb::page(&printer, settings.as_ref()).map_err(other)?;
+    if (device_page.paper.0 - page.paper.0).abs() > 2.0 || (device_page.paper.1 - page.paper.1).abs() > 2.0 {
+        return Err(other("the driver paper or orientation differs from the print layout; choose the matching paper in Print Settings before printing"));
+    }
+    let rgb = page_rgb(page)?;
+    let image = craft_print::rgb::RgbImage { width: page.image.width, height: page.image.height, data: &rgb };
+    let rect = page_rect_top_left(page);
+    let primitives = windows_marks::primitives(page.marks, rect);
+    let color_policy = match p.get("colorHandling").and_then(Value::as_str) {
+        Some("photocraftManages" | "photoshopManages") => craft_print::rgb::ColorPolicy::ApplicationManaged,
+        Some("noColorManagement") => craft_print::rgb::ColorPolicy::Unmanaged,
+        _ => craft_print::rgb::ColorPolicy::DriverManaged,
+    };
+    let job = craft_print::rgb::Job {
+        printer: &printer,
+        settings: settings.as_ref(),
+        title,
+        output_file: None,
+        copies: copies.clamp(1, 999),
+        color_policy,
+        primitives: &primitives,
+    };
+    let done = craft_print::rgb::print(&job, &image, rect).map_err(other)?;
+    Ok(
+        json!({"printer": printer, "dpi": [done.dpi.0, done.dpi.1], "deviceRect": [done.device_rect.0, done.device_rect.1, done.device_rect.2, done.device_rect.3]}),
+    )
+}
+
+fn printers(_: &mut Session, _: &Value) -> Result<Value> {
+    match craft_print::rgb::printers() {
+        Ok(list) => Ok(json!({"supported": true, "printers": list.iter().map(|p| json!({"name": p.name, "default": p.default})).collect::<Vec<_>>()})),
+        Err(craft_print::rgb::PrintError::Unsupported) => Ok(json!({"supported": false, "printers": []})),
+        Err(e) => Err(other(e)),
+    }
+}
+
+fn printer_page(_: &mut Session, p: &Value) -> Result<Value> {
+    let printer = printer_name(p)?;
+    let pg = craft_print::rgb::page(&printer, printer_settings(p)?.as_ref()).map_err(other)?;
+    Ok(
+        json!({"printer": printer, "paper": [pg.paper.0, pg.paper.1], "printable": [pg.printable.0, pg.printable.1, pg.printable.2, pg.printable.3], "dpi": [pg.dpi.0, pg.dpi.1]}),
+    )
 }
 
 /// Set once by test harnesses (the panic hunt) so no command in the process can reach a printer.
@@ -450,9 +565,17 @@ pub fn printing_disabled() -> bool {
     PRINTING_DISABLED.load(std::sync::atomic::Ordering::Relaxed) || std::env::var_os("PHOTOCRAFT_NO_PRINT").is_some_and(|v| !v.is_empty() && v != "0")
 }
 
+fn require_printing_enabled() -> Result<()> {
+    if printing_disabled() {
+        Err(other("printing is disabled in this process (photocraft_engine::print_cmds::disable_printing or PHOTOCRAFT_NO_PRINT); use dryRun: true"))
+    } else {
+        Ok(())
+    }
+}
+
 /// The printers the system spooler knows (Print's Printer menu): CUPS queues and driverless
 /// destinations on macOS and Linux, `Win32_Printer` on Windows, none in the browser.
-fn printers(_: &mut Session, _: &Value) -> Result<Value> {
+fn system_printers(_: &mut Session, _: &Value) -> Result<Value> {
     let list = craft_print::printers();
     let default = list.iter().find(|p| p.default).map(|p| p.name.clone());
     let printers: Vec<Value> = list.into_iter().map(|p| json!({"name": p.name, "default": p.default})).collect();
@@ -627,9 +750,30 @@ pub fn specs() -> Vec<CommandSpec> {
             CommandSpec { id: $id, label: $label, menu: $menu, shortcut: $sc, params: $params, enabled: $enabled, journal: true, run: $run }
         };
     }
-    const PRINT_PARAMS: &str = r##"{"printer":name? (default printer),"copies":1..999=1,"paper":"letter|legal|tabloid|a3|a4|a5|4x6|5x7"|[w,h] pt="letter","orientation":"portrait|landscape"="portrait","center":bool=true,"top":in?,"left":in?,"scale":%=100,"scaleToFit":bool=false,"colorHandling":"printerManages|photocraftManages|noColorManagement"="printerManages","printerProfile":profile? (photocraftManages),"intent":"perceptual|relative|saturation|absolute"="relative","bpc":bool=true,"cornerCropMarks":bool,"centerCropMarks":bool,"registrationMarks":bool,"description":bool,"labels":bool,"emulsionDown":bool=false (mirror the page left to right, for sublimation and other transfer printing),"output":pdf path? (print to PDF; then "send" defaults to false),"send":bool?,"dryRun":bool=false (render the PDF, report the backend command, don't spool; write a PDF only at an explicit output path)} → {pdf:path|null (null without explicit output), imageRect, command:diagnostic array|null, sent}"##;
+    const PRINT_PARAMS: &str = r##"{"printerSettings":hex? (Windows driver settings),"printer":name? (default printer),"copies":1..999=1,"paper":"letter|legal|tabloid|a3|a4|a5|4x6|5x7"|[w,h] pt="letter","orientation":"portrait|landscape"="portrait","center":bool=true,"top":in?,"left":in?,"scale":%=100,"scaleToFit":bool=false,"colorHandling":"printerManages|photocraftManages|noColorManagement"="printerManages","printerProfile":profile? (photocraftManages),"intent":"perceptual|relative|saturation|absolute"="relative","bpc":bool=true,"cornerCropMarks":bool,"centerCropMarks":bool,"registrationMarks":bool,"description":bool,"labels":bool,"emulsionDown":bool=false (mirror the page left to right, for sublimation and other transfer printing),"output":pdf path? (print to PDF; then "send" defaults to false),"send":bool?,"dryRun":bool=false (render the PDF, report the backend command, don't spool; write a PDF only at an explicit output path)} → {pdf:path|null (null without explicit output), imageRect, command:diagnostic array|null, sent}"##;
+
     vec![
         spec!("file.print", "Print…", &["File"], Some("Cmd+P"), PRINT_PARAMS, native_doc, print),
+        CommandSpec {
+            id: "file.print.printers",
+            label: "Printers",
+            menu: &[],
+            shortcut: None,
+            params: r##"{} → {supported, printers: [{name, default}]} (supported: Windows; elsewhere Print spools with lp)"##,
+            enabled: |_| Ok(()),
+            journal: false,
+            run: printers,
+        },
+        CommandSpec {
+            id: "file.print.page",
+            label: "Printer Page",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"printer":name? (default printer),"printerSettings":hex?} → {printer, paper: [w,h] pt, printable: [x,y,w,h] pt from the top-left, dpi: [x,y]} (Windows)"##,
+            enabled: |_| Ok(()),
+            journal: false,
+            run: printer_page,
+        },
         CommandSpec {
             id: "file.printers",
             label: "Printers",
@@ -638,7 +782,7 @@ pub fn specs() -> Vec<CommandSpec> {
             params: r##"{} → {printers:[{name, default}], default:name|null} (the system spooler's printers; a name is Print's "printer")"##,
             enabled: crate::commands::always,
             journal: false,
-            run: printers,
+            run: system_printers,
         },
         spec!(
             "file.printOneCopy",

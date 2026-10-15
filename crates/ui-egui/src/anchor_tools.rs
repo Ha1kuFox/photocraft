@@ -90,7 +90,20 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: Modifiers) -> bool 
 }
 
 fn click(app: &mut PhotocraftApp, tool: Tool, p: [f64; 2]) {
-    let Some((r, _, hit)) = target(app, tool, p) else { return };
+    let Some((r, mut path, hit)) = target(app, tool, p) else { return };
+    if r == PathRef::Pen {
+        // The Pen path being drawn isn't in the document yet: it takes the edit directly.
+        let edited = match hit {
+            Hit::Segment(k, t) => edit::add_anchor(&mut path, k, t).is_ok(),
+            Hit::Anchor(k) => edit::delete_anchor(&mut path, k).is_ok(),
+            Hit::Handle(..) => false,
+        };
+        if edited {
+            app.ui.direct_selection = DirectSelection { target: Some(r), ..Default::default() };
+            crate::vector_ui::pen_replace(app, &path);
+        }
+        return;
+    }
     apply(app, r, hit);
 }
 

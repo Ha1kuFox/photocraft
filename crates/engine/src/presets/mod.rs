@@ -83,6 +83,8 @@ pub struct PresetState {
     pub documents: Vec<crate::document_preset_cmds::DocumentPreset>,
     /// File › New › Recent: the settings of documents recently created there, newest first.
     pub recent_documents: Vec<crate::document_preset_cmds::DocumentSettings>,
+    /// File › Export › Export As: named export configurations.
+    pub export_presets: Vec<crate::export_preset_cmds::ExportPreset>,
     pub clone: clone_source::CloneSources,
     /// The user defaults "Make Default" in the Layer Style dialog saves
     /// (effect kind → param set); "Reset to Default" restores them.
@@ -105,6 +107,7 @@ impl Default for PresetState {
             tool_presets: tools::builtin(),
             documents: Vec::new(),
             recent_documents: Vec::new(),
+            export_presets: Vec::new(),
             clone: Default::default(),
             layer_defaults: BTreeMap::new(),
             swatches: swatches::builtin(),
@@ -135,6 +138,8 @@ struct Persisted {
     #[serde(default)]
     recent_documents: Option<Value>,
     #[serde(default)]
+    export_presets: Option<Value>,
+    #[serde(default)]
     custom_shapes: Option<Vec<crate::edit_menu_cmds::CustomShape>>,
     #[serde(default)]
     layer_defaults: Option<BTreeMap<String, Value>>,
@@ -153,6 +158,7 @@ impl PresetState {
             tool_presets: Some(json!(self.tool_presets)),
             documents: Some(json!(self.documents)),
             recent_documents: Some(json!(self.recent_documents)),
+            export_presets: Some(json!(self.export_presets)),
             custom_shapes: Some(s.edit_state.custom_shapes.clone()),
             layer_defaults: Some(self.layer_defaults.clone()),
             swatches: Some(self.swatches.clone()),
@@ -190,6 +196,9 @@ impl Session {
         }
         if let Some(r) = p.recent_documents {
             st.recent_documents = crate::document_preset_cmds::load_recent(r);
+        }
+        if let Some(e) = p.export_presets {
+            st.export_presets = crate::export_preset_cmds::load(e);
         }
         if let Some(c) = p.custom_shapes {
             self.edit_state.custom_shapes = c;

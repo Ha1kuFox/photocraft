@@ -7,9 +7,10 @@
 //! `γ e^{−β‖z_m − z_n‖²} / dist(m, n)` (γ = 50, β from the mean squared neighbour difference).
 
 use photocraft_geom::Rect;
+use photocraft_raster::{Cancelled, Interrupt};
 
 use super::gmm::{DEFAULT_REG, Gmm};
-use super::{FREE, HARD_BG, HARD_FG, Region, RgbImage, Sampler, contrast_beta, data_costs, grid_cut, subsample};
+use super::{FREE, HARD_BG, HARD_FG, Region, RgbImage, Sampler, contrast_beta, data_costs, grid_cut_cancellable, subsample};
 
 /// Definite background.
 pub const BG: u8 = 0;
@@ -33,6 +34,13 @@ fn is_fg(t: u8) -> bool {
 /// Runs `iters` GrabCut iterations, updating the probable labels of `trimap` in place. Returns
 /// the final (foreground, background) models, or `None` if either side has no pixels.
 pub fn grabcut(img: &RgbImage, trimap: &mut [u8], iters: usize) -> Option<(Gmm, Gmm)> {
+    grabcut_with(img, trimap, iters, &Interrupt::NONE).unwrap_or_default()
+}
+
+/// [`grabcut`] that stops with `Err(Cancelled)` once `ctl` is cancelled, asked each iteration
+/// and inside its min cut. `trimap` is then partly updated.
+pub fn grabcut_with(img: &RgbImage, trimap: &mut [u8], iters: usize, ctl: &Interrupt) -> Result<Option<(Gmm, Gmm)>, Cancelled> {
+    let cancel = || ctl.cancelled();
     let beta = contrast_beta(img);
     let fixed: Vec<u8> = trimap
         .iter()
@@ -44,17 +52,22 @@ pub fn grabcut(img: &RgbImage, trimap: &mut [u8], iters: usize) -> Option<(Gmm, 
         .collect();
     let mut models: Option<(Gmm, Gmm)> = None;
     for _ in 0..iters.max(1) {
+        ctl.check()?;
         let (mut fs, mut bs) = (Vec::new(), Vec::new());
         for (p, t) in img.px.iter().zip(trimap.iter()) {
             if is_fg(*t) { fs.push(*p) } else { bs.push(*p) }
         }
         let (fs, bs) = (subsample(&fs, MAX_SAMPLES), subsample(&bs, MAX_SAMPLES));
         let (fg, bg) = match &models {
-            None => (Gmm::fit(&fs, K, DEFAULT_REG)?, Gmm::fit(&bs, K, DEFAULT_REG)?),
+            None => match (Gmm::fit(&fs, K, DEFAULT_REG), Gmm::fit(&bs, K, DEFAULT_REG)) {
+                (Some(f), Some(b)) => (f, b),
+                _ => return Ok(None),
+            },
             Some((f, b)) => (f.refit(&fs).unwrap_or_else(|| f.clone()), b.refit(&bs).unwrap_or_else(|| b.clone())),
         };
         let (cf, cb) = data_costs(img, &fg, &bg);
-        let cut = grid_cut(img, &cf, &cb, &fixed, GAMMA, beta);
+        // `grid_cut`'s weight, with the cut stopping on cancel.
+        let cut = grid_cut_cancellable(img, &cf, &cb, &fixed, |d2| GAMMA * (-beta * d2).exp(), &cancel).ok_or(Cancelled)?;
         let mut changed = 0usize;
         for (t, fgnd) in trimap.iter_mut().zip(&cut) {
             if *t == PR_BG || *t == PR_FG {
@@ -68,7 +81,7 @@ pub fn grabcut(img: &RgbImage, trimap: &mut [u8], iters: usize) -> Option<(Gmm, 
             break;
         }
     }
-    models
+    Ok(models)
 }
 
 /// Object Selection (rectangle mode): GrabCut initialised from `rect` (outside = background,
