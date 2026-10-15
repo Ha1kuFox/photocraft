@@ -2189,18 +2189,22 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         // Docks zero the item spacing: keep the Opacity and Fill fields apart (#155).
         ui.add_space((theme::ROW_GAP - ui.spacing().item_spacing.y).max(0.0));
         ui.horizontal(|ui| {
-            let lock_label = if t.pro { tl!("Lock:") } else { tl!("Lock") };
+            // A "···" button instead of the "Lock:" text: pens can't right-click, so the row
+            // menu opens here for the selected layer.
+            let menu_btn = icons::button(ui, "ellipsis", 20.0, false, tl!("Layer options"));
+            egui::Popup::menu(&menu_btn).show(|ui| {
+                crate::widgets::style_spectrum_popup_menu(ui);
+                // Like right-clicking inside a multi-selection: act on every selected layer.
+                let on_set = selection.len() > 1;
+                if crate::layer_menu_ui::show(app, ui, l, on_set, &mut actions)
+                    && let Some(done) = crate::layer_row_ui::start_rename(ui.ctx(), l.id.0, &l.name)
+                {
+                    actions.push(done);
+                }
+            });
             // Layer fill opacity (≠ Edit › Fill / path fill → Tô).
             let lang = crate::i18n::current();
             let fill_label = if t.pro { crate::i18n::tr_ctx(lang, "layers", "Fill:") } else { crate::i18n::tr_ctx(lang, "layers", "Fill") };
-            // In a narrow panel with long translated labels, drop the "Lock:" text (the icons keep
-            // their tooltips) rather than let the Fill label run over the lock icons.
-            let gap = ui.spacing().item_spacing.x;
-            let icons_w = if t.pro { 5.0 * 20.0 + gap } else { 22.0 + gap };
-            let fits = body_text_width(ui, lock_label) + icons_w + body_text_width(ui, fill_label) + LAYER_PCT_W + 2.0 * gap <= ui.available_width();
-            if fits {
-                label(ui, lock_label);
-            }
             if t.pro {
                 // The lock icons touch, but only they: the Fill label keeps the same gap before its
                 // field as Opacity's, so both stack in one right-aligned column (#2085).
@@ -5486,6 +5490,10 @@ mod opacity_row_layout_tests {
 #[cfg(test)]
 #[path = "clipping_indicator_tests.rs"]
 mod clipping_indicator_tests;
+
+#[cfg(test)]
+#[path = "layer_options_button_tests.rs"]
+mod layer_options_button_tests;
 
 #[cfg(test)]
 #[path = "mask_props_ui_tests.rs"]
