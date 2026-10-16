@@ -60,7 +60,8 @@
       in {
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = nativeBuildInputs;
-          buildInputs = runtimeLibs ++ [rustToolchain];
+          # Faster test loops: `cargo nextest run` (docs/development.md).
+          buildInputs = runtimeLibs ++ [rustToolchain pkgs.cargo-nextest];
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath runtimeLibs;
           shellHook = ''
             export XDG_DATA_DIRS="${pkgs.gtk3}/share:${pkgs.gsettings-desktop-schemas}/share:''${XDG_DATA_DIRS:-/usr/share}"
