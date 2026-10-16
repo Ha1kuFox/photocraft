@@ -1016,8 +1016,6 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
         if let Some((_, p)) = targeted_vector_mask(app) {
             draw_path(&p, tool == Tool::PathSelection);
         }
-        // The segment the Pen's Auto Add/Delete would add an anchor to, or the anchor it would delete.
-        crate::anchor_tools::draw_pen_hover(app, painter, &to_scr, accent, painter.ctx().input(|i| i.modifiers));
         crate::corner_radius::draw(app, painter, &to_scr, accent);
     }
     // Pen path in progress, with handles of the last knot and a rubber band to the pointer. While
@@ -1038,9 +1036,12 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
             pts.extend(curve_points(w[0][0], w[0][2], w[1][1], w[1][0], &to_scr));
         }
         painter.add(egui::Shape::line(pts, Stroke::new(1.5, accent)));
+        // No rubber band where a click adds or deletes an anchor of this path instead (#6140).
+        let auto = app.hover_doc.is_some_and(|h| crate::anchor_tools::pen_auto(app, tool, painter.ctx().input(|i| i.modifiers), h).is_some());
         if let (Some(last), Some(h)) = (pen.knots.last(), app.hover_doc)
             && !pen.dragging
             && pen.moving.is_none()
+            && !auto
         {
             if pen.curvature && pen.knots.len() >= 2 {
                 // The Curvature Pen previews the curve the next click makes through the pointer.
@@ -1078,6 +1079,11 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
             painter.rect_filled(Rect::from_center_size(c, vec2(8.0, 8.0)), 0.0, accent);
             painter.circle_stroke(c + vec2(11.0, 11.0), 3.5, Stroke::new(1.5, accent));
         }
+    }
+    // The segment the Pen's Auto Add/Delete would add an anchor to, or the anchor it would delete,
+    // over the path being drawn. While drawing, the other paths can be hidden: it edits none of them.
+    if paths || app.ui.pen.is_some() {
+        crate::anchor_tools::draw_pen_hover(app, painter, &to_scr, accent, painter.ctx().input(|i| i.modifiers));
     }
 }
 

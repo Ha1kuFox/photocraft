@@ -2721,7 +2721,6 @@ cameraRaw	Roughness	Неровность
 	Redrawing	Перерисовка
 	This redraw took {seconds} s on the CPU.	Эта перерисовка на CPU заняла {seconds} с.
 	Edits that change the whole document, such as a layer's blend mode, opacity or visibility, redraw all of it.	Правки, затрагивающие весь документ, например режим наложения, непрозрачность или видимость слоя, перерисовывают его целиком.
-	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	Слои не помещаются в бюджет памяти GPU. Увеличение параметра «Память» в разделе Настройки › Производительность повышает бюджет, но не больше четверти памяти этого компьютера.
 	The GPU compositor wasn't used: {reason}	Компоновщик GPU не использовался: {reason}
 fontWeight	Thin	Тонкий
 fontWeight	ExtraLight	Сверхтонкий
@@ -3168,3 +3167,23 @@ curves	Smooth	Сгладить
 	set name	имя набора
 	{set} (modified)	{set} (изменён)
 	Random	Случайно
+	Accept and Go to Conflict	Принять и перейти к конфликту
+	Changes undone.	Изменения отменены.
+	Choose a new shortcut for this command, or leave it without one.	Выберите новую комбинацию для этой команды или оставьте её без комбинации.
+	Put this command's shortcuts back as they were	Вернуть комбинации этой команды
+	Take the shortcut from the other command and select it	Снять комбинацию с другой команды и выбрать её
+	Undo Changes	Отменить изменения
+	{shortcut} is reserved by the system and can't be assigned.	Комбинация {shortcut} зарезервирована системой и не может быть назначена.
+	Low-Latency Drawing (vsync off, applies at next launch)	Рисование с малой задержкой (без вертикальной синхронизации, после перезапуска)
+# Free Transform: a new layer while the box is open (#5859)
+	Free Transform is still being applied; try again when it has finished.	Свободное трансформирование ещё применяется; повторите попытку, когда оно завершится.
+	The transform couldn't be applied.	Не удалось применить трансформирование.
+# Preferences › Performance › GPU Memory; the status bar and slow-redraw notice
+	Its layers need {needed} of GPU memory; the budget leaves them {budget}.	Слоям нужно {needed} памяти GPU; бюджет оставляет им {budget}.
+	Set GPU Memory in Preferences › Performance to what your graphics card can hold, at most 3/8 of its memory. Automatic follows Memory Usage, within a quarter of this computer's memory and 3/8 of the card's, and doesn't count the document against a card whose memory is known. The status bar shows GPU Memory Full while they don't fit.	Задайте «Память GPU» в разделе Настройки › Производительность по объёму, который вмещает ваша видеокарта, не больше 3/8 её памяти. «Автоматически» следует параметру «Память», в пределах четверти памяти этого компьютера и 3/8 памяти видеокарты, и не учитывает документ на видеокарте с известным объёмом памяти. Пока слои не помещаются, в строке состояния показано «Память GPU заполнена».
+	GPU Memory Full	Память GPU заполнена
+	The layers need {needed} of GPU memory and may hold {budget}, so edits that redraw the whole document do it on the CPU. Click to set GPU Memory.	Слоям нужно {needed} памяти GPU, а занимать они могут {budget}, поэтому правки, перерисовывающие весь документ, выполняются на CPU. Нажмите, чтобы задать «Память GPU».
+	GPU memory budget: {budget}	Бюджет памяти GPU: {budget}
+	This document's layers: {needed} of {budget} for layers	Слои этого документа: {needed} из {budget} для слоёв
+	This document's layers need {needed} but may hold {budget}: whole-document redraws use the CPU	Слоям этого документа нужно {needed}, но занимать они могут {budget}: весь документ перерисовывается на CPU
+	GPU Memory (MB, 0 = Automatic)	Память GPU (МБ, 0 = автоматически)

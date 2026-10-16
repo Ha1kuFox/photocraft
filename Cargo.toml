@@ -75,8 +75,17 @@ opt-level = 2
 opt-level = 1
 # Line tables keep file:line in panic backtraces but drop variable info, which roughly halves link
 # time and PDB size for the ~260 test binaries (#2204). CI sets the same through
-# CARGO_PROFILE_DEV_DEBUG. To inspect locals in a debugger, build with CARGO_PROFILE_DEV_DEBUG=true.
+# CARGO_PROFILE_DEV_DEBUG (and no debuginfo at all for the Windows tests). To inspect locals in a
+# debugger, build with CARGO_PROFILE_DEV_DEBUG=true.
 debug = "line-tables-only"
+
+# Test builds compile ui-egui without optimization: its library and unit tests were the biggest
+# test-build units after engine's (12.6 of ~63 compile minutes on the Windows CI runner), and its
+# tests run no heavier pixel code of their own (that lives in the crates that stay optimized).
+# Measured on CI: Windows build 18.9 -> 15.4 min, test run 10.0 -> 10.5. `cargo run` and
+# `cargo build` use the dev profile and are unaffected.
+[profile.test.package.photocraft-ui-egui]
+opt-level = 0
 
 [profile.release]
 lto = "thin"
@@ -127,17 +136,24 @@ opt-level = "z"
 [profile.wasm-release.package.naga]
 opt-level = "z"
 
-# Pixel processing keeps its speed-oriented optimization level.
+# Pixel processing keeps its speed-oriented optimization level, with two exceptions.
+# Colour-management transforms are built once and cached (`transform::cached`), so "z" costs
+# little runtime. The browser app composites per frame on the GPU (`crates/gpu`, WebGPU/WebGL2),
+# so the CPU compositor is not the browser's hot path there; "z" for compose keeps the wasm
+# under the 24 MiB gate (measured −122 KB vs opt-level 3). algo's filters run per pixel on
+# every interactive filter application; "z" there is the size lever of last resort (−331 KB),
+# taken because the gate is enforced in CI: if browser filters feel too slow, restore 3 here
+# and reclaim the bytes from a feature-gated decoder instead.
 [profile.wasm-release.package.photocraft-raster]
 opt-level = 3
 [profile.wasm-release.package.photocraft-color]
 opt-level = 3
 [profile.wasm-release.package.photocraft-cms]
-opt-level = 3
+opt-level = "z"
 [profile.wasm-release.package.photocraft-compose]
-opt-level = 3
+opt-level = "z"
 [profile.wasm-release.package.photocraft-algo]
-opt-level = 3
+opt-level = "z"
 [profile.wasm-release.package.photocraft-paint]
 opt-level = 3
 

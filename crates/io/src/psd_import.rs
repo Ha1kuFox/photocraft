@@ -764,6 +764,12 @@ pub(crate) fn merged_needed(file: &PsdFile) -> bool {
     !layered || file.layers().is_empty() || usize::from(h.channels) > mode.color_channels() + usize::from(file.merged_has_alpha())
 }
 
+/// A damaged merged preview need not prevent opening independently stored layers (#6152).
+/// Other modes are imported flattened, so their merged image cannot be discarded.
+pub(crate) fn can_recover_layers(file: &PsdFile) -> bool {
+    matches!(file.header.color_mode, PsdMode::Grayscale | PsdMode::Rgb | PsdMode::Cmyk | PsdMode::Lab) && file.header.depth != 1 && !file.layers().is_empty()
+}
+
 /// [`psd_to_document_with`] with the merged image already decoded (by
 /// [`PsdFile::from_bytes_and_merged`] with [`merged_needed`]), so it is not decoded again.
 pub(crate) fn psd_to_document_decoded(
@@ -901,9 +907,15 @@ pub(crate) fn psd_to_document_decoded(
         ctl.progress(0.1);
         if let Err(e) = &m {
             cx.warn(format!("merged image could not be decoded: {e}"));
+            if can_recover_layers(file) {
+                cx.warn("extra alpha/spot channels in the merged image could not be recovered");
+            }
         }
         Some(m)
     } else {
+        if let Some(Err(e)) = decoded {
+            cx.warn(format!("merged image could not be decoded; opened the available layers instead: {e}"));
+        }
         None
     };
 

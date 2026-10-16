@@ -275,7 +275,11 @@ fn import_stages(name: &str, bytes: &[u8], ctl: &photocraft_raster::Interrupt, m
     }
     if is_psd(bytes) {
         // A merged image the import reads is decoded with the parse: a ZIP one is inflated once.
-        let (file, merged) = PsdFile::from_bytes_and_merged(bytes, |f| psd_import::check_group_depth(f).is_ok() && psd_import::merged_needed(f))?;
+        let (file, merged) = PsdFile::from_bytes_and_merged_recovering(
+            bytes,
+            |f| psd_import::check_group_depth(f).is_ok() && psd_import::merged_needed(f),
+            psd_import::can_recover_layers,
+        )?;
         // Nesting past the document model's cap could never be saved; reject the file with the
         // actionable limit.
         psd_import::check_group_depth(&file)?;

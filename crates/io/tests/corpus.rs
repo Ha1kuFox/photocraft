@@ -132,7 +132,7 @@ thread_local! {
 }
 
 /// Files known to be invalid upstream: their parse error is expected.
-const KNOWN_BAD: &[(&str, &str)] = &[("group-divider-blend-mode.psd", "psd-tools fixture stripped to 1906 bytes: merged image data missing")];
+const KNOWN_BAD: &[(&str, &str)] = &[("group-divider-blend-mode.psd", "malformed merged image data; recovery is tested in psd_damaged_merged.rs (#6152)")];
 
 /// One corpus directory with its own floors.
 struct Source {

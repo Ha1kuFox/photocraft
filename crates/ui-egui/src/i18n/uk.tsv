@@ -2688,7 +2688,6 @@ cameraRaw	Roughness	Шорсткість
 	Redrawing	Перемальовування
 	This redraw took {seconds} s on the CPU.	Це перемальовування на CPU тривало {seconds} с.
 	Edits that change the whole document, such as a layer's blend mode, opacity or visibility, redraw all of it.	Зміни, що впливають на весь документ, як-от режим накладання, непрозорість чи видимість шару, перемальовують його повністю.
-	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	Його шари не вміщуються в бюджет пам'яті GPU. Збільшення використання пам'яті в Налаштування › Продуктивність підвищує бюджет до чверті пам'яті цього комп'ютера.
 	The GPU compositor wasn't used: {reason}	Компонувальник GPU не використовувався: {reason}
 fontWeight	Thin	Тонкий
 fontWeight	ExtraLight	Екстралегкий
@@ -3897,3 +3896,23 @@ curves	Smooth	Згладити
 	There are too many sets: delete one first.	Забагато наборів: спершу видаліть один.
 	set name	назва набору
 	{set} (modified)	{set} (змінено)
+	Accept and Go to Conflict	Прийняти й перейти до конфлікту
+	Changes undone.	Зміни скасовано.
+	Choose a new shortcut for this command, or leave it without one.	Виберіть нове клавіатурне скорочення для цієї команди або залиште її без нього.
+	Put this command's shortcuts back as they were	Повернути клавіатурні скорочення цієї команди
+	Take the shortcut from the other command and select it	Забрати скорочення в іншої команди й вибрати її
+	Undo Changes	Скасувати зміни
+	{shortcut} is reserved by the system and can't be assigned.	{shortcut} зарезервовано системою, його не можна призначити.
+	Low-Latency Drawing (vsync off, applies at next launch)	Малювання з малою затримкою (без вертикальної синхронізації, після перезапуску)
+# Free Transform: a new layer while the box is open (#5859)
+	Free Transform is still being applied; try again when it has finished.	Вільне трансформування ще застосовується; спробуйте знову, коли воно завершиться.
+	The transform couldn't be applied.	Не вдалося застосувати трансформування.
+# Preferences › Performance › GPU Memory; the status bar and slow-redraw notice
+	Its layers need {needed} of GPU memory; the budget leaves them {budget}.	Його шарам потрібно {needed} пам'яті GPU; бюджет залишає їм {budget}.
+	Set GPU Memory in Preferences › Performance to what your graphics card can hold, at most 3/8 of its memory. Automatic follows Memory Usage, within a quarter of this computer's memory and 3/8 of the card's, and doesn't count the document against a card whose memory is known. The status bar shows GPU Memory Full while they don't fit.	Задайте «Пам'ять GPU» в Налаштування › Продуктивність відповідно до того, скільки вміщує ваша відеокарта, не більше 3/8 її пам'яті. «Автоматично» стежить за використанням пам'яті, у межах чверті пам'яті цього комп'ютера й 3/8 пам'яті відеокарти, і не враховує документ на відеокарті з відомим обсягом пам'яті. Поки шари не вміщуються, рядок стану показує «Пам'ять GPU заповнена».
+	GPU Memory Full	Пам'ять GPU заповнена
+	The layers need {needed} of GPU memory and may hold {budget}, so edits that redraw the whole document do it on the CPU. Click to set GPU Memory.	Шарам потрібно {needed} пам'яті GPU, а займати вони можуть {budget}, тому зміни, що перемальовують увесь документ, виконуються на CPU. Натисніть, щоб задати «Пам'ять GPU».
+	GPU memory budget: {budget}	Бюджет пам'яті GPU: {budget}
+	This document's layers: {needed} of {budget} for layers	Шари цього документа: {needed} з {budget} для шарів
+	This document's layers need {needed} but may hold {budget}: whole-document redraws use the CPU	Шарам цього документа потрібно {needed}, але займати вони можуть {budget}: увесь документ перемальовується на CPU
+	GPU Memory (MB, 0 = Automatic)	Пам'ять GPU (МБ, 0 = автоматично)

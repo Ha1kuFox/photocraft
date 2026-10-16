@@ -3448,7 +3448,6 @@ cameraRaw	Yellow	Κίτρινο
 	HSB/HSL	HSB/HSL
 	Import Swatches…	Εισαγωγή δειγμάτων χρωμάτων…
 	Impressionist	Ιμπρεσιονιστικό
-	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	Τα επίπεδά του δεν χωρούν στο όριο μνήμης της GPU. Αυξάνοντας τη Χρήση μνήμης στις Προτιμήσεις › Επιδόσεις αυξάνεται το όριο, έως το ένα τέταρτο της μνήμης αυτού του υπολογιστή.
 	Knockout	Διάτρηση
 	Large document: redrawing on the CPU	Μεγάλο έγγραφο: επανασχεδίαση στη CPU
 	Redrawing	Επανασχεδίαση
@@ -3898,3 +3897,23 @@ curves	Smooth	Εξομάλυνση
 	There are too many sets: delete one first.	Υπάρχουν πάρα πολλά σύνολα: διαγράψτε πρώτα ένα.
 	set name	όνομα συνόλου
 	{set} (modified)	{set} (τροποποιημένο)
+	Accept and Go to Conflict	Αποδοχή και μετάβαση στη σύγκρουση
+	Changes undone.	Οι αλλαγές αναιρέθηκαν.
+	Choose a new shortcut for this command, or leave it without one.	Επιλέξτε νέα συντόμευση για αυτήν την εντολή ή αφήστε την χωρίς.
+	Put this command's shortcuts back as they were	Επαναφορά των συντομεύσεων αυτής της εντολής όπως ήταν
+	Take the shortcut from the other command and select it	Αφαίρεση της συντόμευσης από την άλλη εντολή και επιλογή της
+	Undo Changes	Αναίρεση αλλαγών
+	{shortcut} is reserved by the system and can't be assigned.	Η συντόμευση {shortcut} δεσμεύεται από το σύστημα και δεν μπορεί να εκχωρηθεί.
+	Low-Latency Drawing (vsync off, applies at next launch)	Σχεδίαση χαμηλής καθυστέρησης (χωρίς vsync, ισχύει στην επόμενη εκκίνηση)
+# Free Transform: a new layer while the box is open (#5859)
+	Free Transform is still being applied; try again when it has finished.	Ο Ελεύθερος μετασχηματισμός εφαρμόζεται ακόμη· δοκιμάστε ξανά όταν ολοκληρωθεί.
+	The transform couldn't be applied.	Δεν ήταν δυνατή η εφαρμογή του μετασχηματισμού.
+# Preferences › Performance › GPU Memory; the status bar and slow-redraw notice
+	Its layers need {needed} of GPU memory; the budget leaves them {budget}.	Τα επίπεδά του χρειάζονται {needed} μνήμης GPU· το όριο τους αφήνει {budget}.
+	Set GPU Memory in Preferences › Performance to what your graphics card can hold, at most 3/8 of its memory. Automatic follows Memory Usage, within a quarter of this computer's memory and 3/8 of the card's, and doesn't count the document against a card whose memory is known. The status bar shows GPU Memory Full while they don't fit.	Ορίστε τη Μνήμη GPU στις Προτιμήσεις › Επιδόσεις σε όσο χωράει η κάρτα γραφικών σας, το πολύ στα 3/8 της μνήμης της. Το Αυτόματο ακολουθεί τη Χρήση μνήμης, εντός του ενός τετάρτου της μνήμης αυτού του υπολογιστή και των 3/8 της κάρτας, και δεν χρεώνει το έγγραφο σε κάρτα με γνωστή μνήμη. Όσο δεν χωρούν, η γραμμή κατάστασης δείχνει Η μνήμη GPU είναι πλήρης.
+	GPU Memory Full	Η μνήμη GPU είναι πλήρης
+	The layers need {needed} of GPU memory and may hold {budget}, so edits that redraw the whole document do it on the CPU. Click to set GPU Memory.	Τα επίπεδα χρειάζονται {needed} μνήμης GPU και μπορούν να καταλάβουν {budget}, οπότε οι αλλαγές που ξανασχεδιάζουν όλο το έγγραφο το κάνουν στη CPU. Κάντε κλικ για να ορίσετε τη Μνήμη GPU.
+	GPU memory budget: {budget}	Όριο μνήμης GPU: {budget}
+	This document's layers: {needed} of {budget} for layers	Επίπεδα αυτού του εγγράφου: {needed} από {budget} για επίπεδα
+	This document's layers need {needed} but may hold {budget}: whole-document redraws use the CPU	Τα επίπεδα αυτού του εγγράφου χρειάζονται {needed} αλλά μπορούν να καταλάβουν {budget}: η επανασχεδίαση όλου του εγγράφου γίνεται στη CPU
+	GPU Memory (MB, 0 = Automatic)	Μνήμη GPU (MB, 0 = Αυτόματο)

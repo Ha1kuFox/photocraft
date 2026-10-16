@@ -41,16 +41,21 @@ fn gpu_app() -> Option<Gpu> {
     let observer = Arc::new(std::sync::Mutex::new(None));
     let observer_out = observer.clone();
     let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        egui_kittest::Harness::builder().with_size(egui::vec2(1000.0, 700.0)).with_pixels_per_point(1.0).with_max_steps(64).wgpu().build_eframe(move |cc| {
-            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
-            let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
-            if let Some(rs) = cc.wgpu_render_state.as_ref() {
-                *observer_out.lock().expect("observer") = Some(GpuCanvas::new(rs));
-                app.set_wgpu(rs.clone());
-            }
-            app.background_jobs = true;
-            app
-        })
+        egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1000.0, 700.0))
+            .with_pixels_per_point(1.0)
+            .with_max_steps(64)
+            .wgpu_setup(crate::gpu_canvas::wgpu_setup())
+            .build_eframe(move |cc| {
+                PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+                let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+                if let Some(rs) = cc.wgpu_render_state.as_ref() {
+                    *observer_out.lock().expect("observer") = Some(GpuCanvas::new(rs));
+                    app.set_wgpu(rs.clone());
+                }
+                app.background_jobs = true;
+                app
+            })
     }));
     let Ok(harness) = built else {
         eprintln!("skipping: no GPU adapter");

@@ -160,12 +160,14 @@ fn key(label: &str) -> String {
     l.trim_end_matches('…').trim().to_lowercase()
 }
 
-/// The engine's own candidates: every command in a menu, in command order.
+/// The engine's own candidates: every command in a menu (the engine's, then the shell's), in
+/// command order.
 pub fn command_candidates() -> Vec<Candidate> {
-    crate::command_specs()
-        .iter()
-        .filter(|c| !c.menu.is_empty())
-        .map(|c| Candidate { id: c.id.to_string(), label: c.label.to_string(), default: c.shortcut.map(str::to_string) })
+    let engine = crate::command_specs().iter().map(|c| (c.id, c.label, c.menu, c.shortcut));
+    engine
+        .chain(crate::shell_commands::SHELL_COMMANDS.iter().copied())
+        .filter(|c| !c.2.is_empty())
+        .map(|(id, label, _, default)| Candidate { id: id.to_string(), label: label.to_string(), default: default.map(str::to_string) })
         .collect()
 }
 
@@ -219,8 +221,8 @@ pub fn plan(candidates: impl IntoIterator<Item = Candidate>, set: &KysSet) -> Pl
 }
 
 /// The tool keys of `set` matched to `tools` (our tool id and Photoshop's name for it, which is
-/// ours too: "Move Tool"): tool id → key (a single letter, upper case), and the names with no
-/// tool here. A row PhotoCraft wrote names the tool by id. A key that isn't one letter is skipped.
+/// ours too: "Move Tool"): tool id → key (normalised: a letter, or an F-key), and the names with no
+/// tool here. A row PhotoCraft wrote names the tool by id. A key with modifiers is skipped.
 pub fn plan_tools<'a>(tools: impl IntoIterator<Item = (&'a str, &'a str)>, set: &KysSet) -> (BTreeMap<String, String>, Vec<String>) {
     let tools: Vec<(&str, &str)> = tools.into_iter().collect();
     let mut keys = BTreeMap::new();
@@ -232,11 +234,10 @@ pub fn plan_tools<'a>(tools: impl IntoIterator<Item = (&'a str, &'a str)>, set: 
             unknown.push(row.name.clone());
             continue;
         };
-        let mut letters = row.shortcuts.first().map(|k| k.trim()).unwrap_or_default().chars();
-        if let (Some(c), None) = (letters.next(), letters.next())
-            && c.is_ascii_alphanumeric()
-        {
-            keys.insert((*id).to_string(), c.to_ascii_uppercase().to_string());
+        // One key without modifiers (Photoshop's letters; our tools may also take an F-key).
+        let key = row.shortcuts.first().and_then(|k| normalize_shortcut(k.trim()));
+        if let Some(k) = key.filter(|k| !k.contains('+') || k == "+") {
+            keys.insert((*id).to_string(), k);
         }
     }
     (keys, unknown)
@@ -448,7 +449,7 @@ mod tests {
         assert_eq!(keys.get("tools.select.move").map(String::as_str), Some("V"));
         assert_eq!(keys.get("tools.select.pencil").map(String::as_str), Some("N"), "case-insensitive, upper-cased");
         assert_eq!(keys.get("tools.select.brush").map(String::as_str), Some("B"), "by pc-id");
-        assert!(!keys.contains_key("tools.select.lasso"), "a tool key is one letter");
+        assert!(!keys.contains_key("tools.select.lasso"), "a tool key has no modifiers");
         assert_eq!(unknown, vec!["Imaginary Tool".to_string()]);
         // Our own export reads back by id.
         let out = write("T", &[Entry { id: "tools.select.pencil".into(), label: "Pencil Tool".into(), tool: true, keys: vec!["F".into()] }]);

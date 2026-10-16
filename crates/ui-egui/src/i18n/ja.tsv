@@ -2422,7 +2422,6 @@ cameraRaw	Color	カラー
 	Redrawing	再描画中
 	This redraw took {seconds} s on the CPU.	この再描画は CPU で {seconds} 秒かかりました。
 	Edits that change the whole document, such as a layer's blend mode, opacity or visibility, redraw all of it.	レイヤーの描画モード、不透明度、表示/非表示など、ドキュメント全体に関わる編集では全体が再描画されます。
-	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	レイヤーが GPU メモリの予算に収まりません。環境設定 › パフォーマンスのメモリ使用量を増やすと、このコンピューターのメモリの4分の1まで予算が増えます。
 	The GPU compositor wasn't used: {reason}	GPU コンポジターは使用されませんでした: {reason}
 fontWeight	Thin	極細
 fontWeight	ExtraLight	特細
@@ -3874,3 +3873,23 @@ curves	Smooth	スムーズ
 	There are too many sets: delete one first.	セットが多すぎます。先に 1 つ削除してください。
 	set name	セット名
 	{set} (modified)	{set}（変更あり）
+	Accept and Go to Conflict	適用して競合へ移動
+	Changes undone.	変更を取り消しました。
+	Choose a new shortcut for this command, or leave it without one.	このコマンドに新しいショートカットを選択するか、なしのままにしてください。
+	Put this command's shortcuts back as they were	このコマンドのショートカットを元に戻す
+	Take the shortcut from the other command and select it	もう一方のコマンドからショートカットを外して選択
+	Undo Changes	変更を取り消し
+	{shortcut} is reserved by the system and can't be assigned.	{shortcut} はシステムで予約されているため割り当てられません。
+	Low-Latency Drawing (vsync off, applies at next launch)	低遅延描画（垂直同期オフ、次回起動時に適用）
+# Free Transform: a new layer while the box is open (#5859)
+	Free Transform is still being applied; try again when it has finished.	自由変形を適用中です。完了してからもう一度お試しください。
+	The transform couldn't be applied.	変形を適用できませんでした。
+# Preferences › Performance › GPU Memory; the status bar and slow-redraw notice
+	Its layers need {needed} of GPU memory; the budget leaves them {budget}.	レイヤーには {needed} の GPU メモリが必要ですが、予算で使えるのは {budget} です。
+	Set GPU Memory in Preferences › Performance to what your graphics card can hold, at most 3/8 of its memory. Automatic follows Memory Usage, within a quarter of this computer's memory and 3/8 of the card's, and doesn't count the document against a card whose memory is known. The status bar shows GPU Memory Full while they don't fit.	環境設定 › パフォーマンスの GPU メモリを、グラフィックカードが保持できる量（最大でメモリの 3/8）に設定してください。自動はメモリ使用量に従い、このコンピューターのメモリの4分の1とカードの 3/8 の範囲内で、メモリ量がわかるカードではドキュメント分を差し引きません。収まらない間、ステータスバーに「GPU メモリ不足」と表示されます。
+	GPU Memory Full	GPU メモリ不足
+	The layers need {needed} of GPU memory and may hold {budget}, so edits that redraw the whole document do it on the CPU. Click to set GPU Memory.	レイヤーには {needed} の GPU メモリが必要ですが、使えるのは {budget} のため、ドキュメント全体を再描画する編集は CPU で行われます。クリックして GPU メモリを設定します。
+	GPU memory budget: {budget}	GPU メモリ予算: {budget}
+	This document's layers: {needed} of {budget} for layers	このドキュメントのレイヤー: レイヤー用 {budget} のうち {needed}
+	This document's layers need {needed} but may hold {budget}: whole-document redraws use the CPU	このドキュメントのレイヤーには {needed} が必要ですが、使えるのは {budget} です: ドキュメント全体の再描画は CPU で行われます
+	GPU Memory (MB, 0 = Automatic)	GPU メモリ（MB、0 = 自動）

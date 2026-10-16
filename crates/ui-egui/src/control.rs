@@ -131,8 +131,9 @@ pub enum Outcome {
 /// field's value is validated before the first one is applied, so a typo, an unknown field, a
 /// bad value or a bad nested key can't reply with success while nothing — or only half of it —
 /// changed (#412).
-pub const UI_SET_FIELDS: [&str; 37] = [
+pub const UI_SET_FIELDS: [&str; 38] = [
     "tool",
+    "strokeTrace",
     "panels",
     "dock",
     "dockTabs",
@@ -492,6 +493,19 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     None => None,
                 };
                 let gradient_classic = bool_field(p, "gradientClassic")?;
+                // The stroke latency trace (`stroke_trace`), at runtime: on (stderr) or off. A CSV
+                // file is only for the user's own launch (`--stroke-trace <path>`): a path over the
+                // control channel would write outside the automation write root.
+                let stroke_trace = match p.get("strokeTrace") {
+                    None | Some(Value::Null) => None,
+                    Some(Value::Bool(b)) => Some(if *b { "stderr" } else { "off" }),
+                    Some(Value::String(v)) => match v.trim() {
+                        "stderr" | "on" | "true" => Some("stderr"),
+                        "off" | "false" => Some("off"),
+                        _ => return Err("strokeTrace must be true, false, \"stderr\" or \"off\"; a CSV file is set at launch (--stroke-trace <path>)".into()),
+                    },
+                    Some(_) => return Err("strokeTrace must be true, false, \"stderr\" or \"off\"".into()),
+                };
                 // The Eyedropper's options bar (#1649): Sample Size, Sample, Show Sampling Ring.
                 let eyedropper_size = match p.get("eyedropperSampleSize") {
                     Some(v) => Some(
@@ -662,6 +676,9 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                 let gradient_before = app.ui.tool_options.clone();
                 if let Some(mode) = gradient_blend {
                     app.ui.tool_options.gradient_blend_mode = mode;
+                }
+                if let Some(v) = &stroke_trace {
+                    app.stroke_trace.set(v);
                 }
                 if let Some(classic) = gradient_classic {
                     app.ui.tool_options.gradient_classic = classic;
@@ -1383,6 +1400,26 @@ mod tests {
             Outcome::Done(v) => v,
             _ => panic!("{method}: expected an immediate reply"),
         }
+    }
+
+    #[test]
+    fn ui_set_turns_the_stroke_trace_on_and_off_at_runtime() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        assert!(!app.stroke_trace.enabled());
+        assert_eq!(call(&mut app, &ctx, "ui.set", json!({"strokeTrace": true}))["ok"], true);
+        assert!(app.stroke_trace.enabled());
+        assert_eq!(call(&mut app, &ctx, "ui.set", json!({"strokeTrace": "off"}))["ok"], true);
+        assert!(!app.stroke_trace.enabled());
+        let bad = call(&mut app, &ctx, "ui.set", json!({"strokeTrace": 3, "tool": "Pencil"}));
+        assert_eq!(bad["ok"], false);
+        // A file path isn't accepted over the channel (it would write outside the automation
+        // write root); nothing is created.
+        let path = std::env::temp_dir().join(format!("photocraft-trace-{}.csv", std::process::id()));
+        let bad = call(&mut app, &ctx, "ui.set", json!({"strokeTrace": path.to_str().unwrap(), "tool": "Pencil"}));
+        assert_eq!(bad["ok"], false);
+        assert!(!path.exists());
+        assert!(!app.stroke_trace.enabled() && app.ui.tool != crate::state::Tool::Pencil, "a rejected call applies nothing");
     }
 
     #[test]

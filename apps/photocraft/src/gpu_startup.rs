@@ -443,6 +443,14 @@ pub fn read_display_server(path: Option<&Path>) -> photocraft_engine::prefs::Lin
         .unwrap_or_default()
 }
 
+/// Preferences › Performance › Low-Latency Drawing (`performance.lowLatencyDrawing`, off unless
+/// turned on), read before the window opens: it picks the surface's present mode.
+pub fn read_low_latency(path: Option<&Path>) -> bool {
+    let v: Value = path.and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
+    let default = photocraft_engine::prefs::Preferences::default().performance.low_latency_drawing;
+    v.get("performance").and_then(|p| p.get("lowLatencyDrawing")).and_then(Value::as_bool).unwrap_or(default)
+}
+
 /// Read the policy leniently at startup, including old settings without renderingMode.
 pub fn read_rendering_prefs(path: Option<&Path>) -> (GpuBackend, RenderingMode) {
     let v: Value = path.and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
@@ -461,6 +469,23 @@ mod tests {
 
     fn crashed(backend: &str, adapter_backend: &str) -> Marker {
         Marker { backend: backend.into(), adapter: "Intel(R) UHD Graphics".into(), adapter_backend: adapter_backend.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn low_latency_drawing_is_read_before_the_window_opens_and_defaults_off() {
+        let dir = std::env::temp_dir().join(format!("photocraft-low-latency-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("preferences.json");
+        let read = |json: &str| {
+            std::fs::write(&file, json).unwrap();
+            read_low_latency(Some(&file))
+        };
+        assert!(read(r#"{"performance":{"lowLatencyDrawing":true}}"#));
+        assert!(!read(r#"{"performance":{"lowLatencyDrawing":false}}"#));
+        assert!(!read(r#"{"performance":{"lowLatencyDrawing":"nope"}}"#), "garbage keeps the default (off)");
+        assert!(!read("not json"));
+        assert!(!read_low_latency(None), "no settings file: the default (off)");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

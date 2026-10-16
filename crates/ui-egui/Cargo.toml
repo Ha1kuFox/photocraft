@@ -47,7 +47,7 @@ sys-locale = "=0.3.2"
 # Installed RAM for the GPU memory budget (`gpu_canvas::physical_memory`): the safe binding the
 # desktop app already uses, pinned to the same version.
 [target.'cfg(target_os = "windows")'.dependencies]
-winsafe = { version = "=0.0.29", default-features = false, features = ["kernel"] }
+winsafe = { version = "=0.0.29", default-features = false, features = ["kernel", "dxgi"] }
 
 [dev-dependencies]
 # egui's own default fonts in tests: the oracle for egui_fonts.rs, and contexts made with

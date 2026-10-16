@@ -102,6 +102,22 @@ impl PsdFile {
     /// Errors are those of [`Self::from_bytes`]; a merged image that passes the parse's check but
     /// cannot be decoded is the inner `Err`, as [`Self::decode_merged`] would return it.
     pub fn from_bytes_and_merged(data: &[u8], want: impl FnOnce(&PsdFile) -> bool) -> Result<(Self, Option<Result<Vec<u8>>>)> {
+        Self::from_bytes_and_merged_recovering(data, want, |_| false)
+    }
+
+    /// Parses like [`Self::from_bytes_and_merged`], but lets `recover` accept damage confined to
+    /// the merged image after all layer records and channel data have been read successfully.
+    /// Callers should opt in only when they can reconstruct the document from its layers.
+    ///
+    /// The original encoded image bytes are preserved and its parse error is returned as
+    /// `Some(Err(..))`, even when `want` did not request a decode. The caller must report that
+    /// error rather than silently discarding the merged image (which may hold extra channels).
+    /// Header/layer errors, missing compression fields and parse safety-limit errors stay fatal.
+    pub fn from_bytes_and_merged_recovering(
+        data: &[u8],
+        want: impl FnOnce(&PsdFile) -> bool,
+        recover: impl FnOnce(&PsdFile) -> bool,
+    ) -> Result<(Self, Option<Result<Vec<u8>>>)> {
         let mut r = Reader::new(data);
         let header = Header::read(&mut r)?;
         let psb = header.version.is_psb();
@@ -161,10 +177,30 @@ impl PsdFile {
         let image_data = ImageData { compression: Compression::Raw, data: Vec::new() };
         let mut file =
             PsdFile { header, color_mode_data, resources, layer_info, layer_info_placement, global_layer_mask, global_blocks, layer_mask_trailing, image_data };
-        let merged = if want(&file) { Some(file.read_merged_decoded(&mut r)?) } else { None };
-        if merged.is_none() {
-            file.image_data = ImageData::read(&mut r, &file.header)?;
-        }
+        let mut encoded = r.clone();
+        let merged = if want(&file) {
+            file.read_merged_decoded(&mut r).map(Some)
+        } else {
+            ImageData::read(&mut r, &file.header).map(|image| {
+                file.image_data = image;
+                None
+            })
+        };
+        let merged = match merged {
+            Ok(merged) => merged,
+            Err(error) => {
+                if matches!(error, PsdError::LimitExceeded(_)) || !recover(&file) {
+                    return Err(error);
+                }
+                let compression = Compression::from_u16(encoded.u16()?);
+                let source = encoded.peek_rest();
+                let mut data = Vec::new();
+                data.try_reserve_exact(source.len()).map_err(|_| PsdError::LimitExceeded("not enough memory to retain the damaged merged image"))?;
+                data.extend_from_slice(source);
+                file.image_data = ImageData { compression, data };
+                Some(Err(error))
+            }
+        };
         Ok((file, merged))
     }
 

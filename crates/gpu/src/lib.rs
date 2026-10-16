@@ -794,6 +794,11 @@ impl Compositor {
         total
     }
 
+    /// The GPU memory resident layer pages may hold (bytes; see [`Compositor::set_memory_budget`]).
+    pub fn resident_budget(&self) -> u64 {
+        self.resident_budget
+    }
+
     /// Whether a render of `region` keeps every layer page it needs within the budget; when it
     /// doesn't, each render re-uploads what was evicted.
     pub fn fits_budget(&self, doc: &Document, region: Rect) -> bool {

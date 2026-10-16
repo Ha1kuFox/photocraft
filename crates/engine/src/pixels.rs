@@ -415,5 +415,10 @@ pub fn merge_down(doc: &Document, lower: &Layer, upper: &Layer) -> Layer {
     // Merge Down replaces the lower layer, so keep its editing restrictions.
     // In particular, a merged Background must remain opaque and position-locked.
     merged.locks = lower.locks;
+    // And its place: two layers clipped in one chain merge into a layer still clipped to the base,
+    // with the lower layer's colour label and link.
+    merged.clipped = lower.clipped && upper.clipped;
+    merged.label = lower.label;
+    merged.link_group = lower.link_group;
     merged
 }

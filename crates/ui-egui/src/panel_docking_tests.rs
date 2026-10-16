@@ -175,6 +175,7 @@ fn shared_layout_keeps_panel_identity_across_themes_and_respects_workspace_lock(
 /// Explicit offscreen evidence; this creates no native windows.
 #[test]
 fn capture_custom_panel_docking_visual_fixtures() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(directory) = std::env::var_os("CRAFT_UI_DOCKING_FIXTURES").map(std::path::PathBuf::from) else { return };
     std::fs::create_dir_all(&directory).unwrap();
     for theme in crate::theme::ThemeKind::ALL {
@@ -211,6 +212,7 @@ fn capture_custom_panel_docking_visual_fixtures() {
 
 #[test]
 fn floating_group_titles_are_opaque_in_studio_themes() {
+    let _gpu = photocraft_testkit::gpu_lock();
     // Studio's tab strip is transparent over the dock's card; a floating group must not show the canvas (#4509).
     let mut app = app();
     app.run("window.panel.float", json!({"panel":"swatches","x":40,"y":60,"width":300,"height":300})).unwrap();
@@ -346,6 +348,7 @@ fn splitting_a_short_column_keeps_the_layers_footer_visible_and_usable() {
 
 #[test]
 fn populated_canvas_keeps_a_real_opacity_edit_after_floating_and_redocking() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let mut app = app();
     app.ui.theme = crate::theme::ThemeKind::Studio;
     app.run("file.new", json!({"width":480,"height":360})).unwrap();

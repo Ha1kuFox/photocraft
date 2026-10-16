@@ -1130,6 +1130,7 @@ fn temporary_type_transform_captures_press_and_rejects_collapsed_geometry() {
 #[test]
 #[ignore = "writes visual evidence to target/issue-1091; run explicitly for visual QA"]
 fn temporary_type_transform_visual_evidence() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/issue-1091");
     std::fs::create_dir_all(&out).unwrap();
     for (index, theme) in crate::theme::ThemeKind::ALL.into_iter().enumerate() {
@@ -1288,6 +1289,9 @@ fn font_styles_keep_metadata_names_and_numeric_labels() {
 
 #[test]
 fn postscript_only_style_shows_actual_subfamily() {
+    // selected_style reads the engine only once the font scan is done (try_shared). Under nextest
+    // this test runs in a process of its own, where nothing else has started the scan, so start it.
+    let _ = photocraft_text::shared();
     let style = photocraft_doc::text::CharStyle { font_family: "Inter".into(), postscript_name: Some("Inter-SemiBold".into()), ..Default::default() };
     assert_eq!(super::selected_style(&style), "SemiBold");
 }

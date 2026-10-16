@@ -2874,7 +2874,6 @@ cameraRaw	Whites	Brancos
 	Redrawing	Redesenhando
 	This redraw took {seconds} s on the CPU.	Este redesenho na CPU levou {seconds} s.
 	Edits that change the whole document, such as a layer's blend mode, opacity or visibility, redraw all of it.	Edições que mudam o documento inteiro, como modo de mesclagem, opacidade ou visibilidade de uma camada, redesenham tudo.
-	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	As camadas não cabem no orçamento de memória da GPU. Aumentar Uso de memória em Preferências › Desempenho eleva o orçamento, até um quarto da memória deste computador.
 	The GPU compositor wasn't used: {reason}	O compositor de GPU não foi usado: {reason}
 fontWeight	Thin	Fina
 fontWeight	ExtraLight	Extrafina
@@ -3988,3 +3987,23 @@ layerLabel	No Color	Sem cor
 	There are too many sets: delete one first.	Há conjuntos demais: exclua um primeiro.
 	set name	nome do conjunto
 	{set} (modified)	{set} (modificado)
+	Accept and Go to Conflict	Aceitar e ir para o conflito
+	Changes undone.	Alterações desfeitas.
+	Choose a new shortcut for this command, or leave it without one.	Escolha um novo atalho para este comando ou deixe-o sem atalho.
+	Put this command's shortcuts back as they were	Restaurar os atalhos deste comando como estavam
+	Take the shortcut from the other command and select it	Tirar o atalho do outro comando e selecioná-lo
+	Undo Changes	Desfazer alterações
+	{shortcut} is reserved by the system and can't be assigned.	{shortcut} é reservado pelo sistema e não pode ser atribuído.
+	Low-Latency Drawing (vsync off, applies at next launch)	Desenho de baixa latência (sem sincronização vertical, aplicado na próxima inicialização)
+# Free Transform: a new layer while the box is open (#5859)
+	Free Transform is still being applied; try again when it has finished.	A Transformação livre ainda está sendo aplicada; tente novamente quando terminar.
+	The transform couldn't be applied.	Não foi possível aplicar a transformação.
+# Preferences › Performance › GPU Memory; the status bar and slow-redraw notice
+	Its layers need {needed} of GPU memory; the budget leaves them {budget}.	As camadas precisam de {needed} de memória da GPU; o orçamento lhes deixa {budget}.
+	Set GPU Memory in Preferences › Performance to what your graphics card can hold, at most 3/8 of its memory. Automatic follows Memory Usage, within a quarter of this computer's memory and 3/8 of the card's, and doesn't count the document against a card whose memory is known. The status bar shows GPU Memory Full while they don't fit.	Ajuste Memória da GPU em Preferências › Desempenho para o que sua placa de vídeo comporta, no máximo 3/8 da memória dela. Automático segue Uso de memória, dentro de um quarto da memória deste computador e 3/8 da memória da placa, e não desconta o documento de uma placa cuja memória é conhecida. Enquanto não couberem, a barra de status mostra Memória da GPU cheia.
+	GPU Memory Full	Memória da GPU cheia
+	The layers need {needed} of GPU memory and may hold {budget}, so edits that redraw the whole document do it on the CPU. Click to set GPU Memory.	As camadas precisam de {needed} de memória da GPU e podem ocupar {budget}, então as edições que redesenham o documento inteiro fazem isso na CPU. Clique para ajustar Memória da GPU.
+	GPU memory budget: {budget}	Orçamento de memória da GPU: {budget}
+	This document's layers: {needed} of {budget} for layers	Camadas deste documento: {needed} de {budget} para camadas
+	This document's layers need {needed} but may hold {budget}: whole-document redraws use the CPU	As camadas deste documento precisam de {needed} mas podem ocupar {budget}: o documento inteiro é redesenhado na CPU
+	GPU Memory (MB, 0 = Automatic)	Memória da GPU (MB, 0 = Automático)

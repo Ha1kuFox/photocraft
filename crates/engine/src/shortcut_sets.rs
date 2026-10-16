@@ -234,20 +234,28 @@ pub fn summarize(set: &str, sections: &[Section], mac: bool) -> String {
     out
 }
 
-/// Every engine command (and temporary tool) with a key under the bindings of `p`: (id,
-/// label, top-level menu, keys with the main one first). The app's dialog adds the commands
-/// only the shell knows (View › Zoom In, the tools).
-pub fn bound(p: &Preferences) -> Vec<(String, String, String, Vec<String>)> {
-    let temporary = crate::prefs::TEMPORARY_TOOLS.iter().map(|t| (t.0, t.1, "Tools", Some(t.2)));
-    crate::command_specs()
-        .iter()
-        .map(|c| (c.id, c.label, c.menu.first().copied().unwrap_or("Other"), c.shortcut))
-        .chain(temporary)
-        .filter_map(|(id, label, menu, def)| {
+/// A command (or tool) with a key under some bindings.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Bound {
+    pub id: String,
+    pub label: String,
+    /// Its top-level menu ("Tools" for tools).
+    pub menu: String,
+    /// Main key first, then the further keys.
+    pub keys: Vec<String>,
+    pub tool: bool,
+}
+
+/// Every bindable command with a key under the bindings of `p`: the engine's and the shell's
+/// commands, the tools and the temporary tools ([`crate::prefs::bindable_items`]).
+pub fn bound(p: &Preferences) -> Vec<Bound> {
+    crate::prefs::bindable_items()
+        .filter_map(|(id, label, menu, def, kind)| {
             let main = p.shortcut(id, def);
             let mut keys: Vec<String> = main.and_then(normalize_shortcut).into_iter().collect();
             keys.extend(p.alternates(id, main));
-            (!keys.is_empty()).then(|| (id.to_string(), label.to_string(), menu.to_string(), keys))
+            let menu = menu.first().copied().unwrap_or("Other").to_string();
+            (!keys.is_empty()).then(|| Bound { id: id.to_string(), label: label.to_string(), menu, keys, tool: kind == crate::prefs::BindKind::Tool })
         })
         .collect()
 }
@@ -340,8 +348,12 @@ mod tests {
     fn bound_lists_main_keys_then_alternates() {
         let p = prefs();
         let b = bound(&p);
-        let copy = b.iter().find(|(id, ..)| id == "edit.copy").expect("Copy has keys");
-        assert_eq!(copy.3, vec!["Cmd+C".to_string(), "F3".to_string()]);
-        assert!(b.iter().any(|(id, ..)| id == "tools.temporary.hand"));
+        let copy = b.iter().find(|x| x.id == "edit.copy").expect("Copy has keys");
+        assert_eq!(copy.keys, vec!["Cmd+C".to_string(), "F3".to_string()]);
+        assert!(b.iter().any(|x| x.id == "tools.temporary.hand"));
+        // The shell's commands and the tools too: a set saved headless is the whole set.
+        assert!(b.iter().any(|x| x.id == "view.zoomIn" && x.keys.len() >= 2), "Zoom In with its Cmd++");
+        let mv = b.iter().find(|x| x.id == "tools.select.move").expect("Move Tool");
+        assert!(mv.tool && mv.keys == ["V"] && mv.menu == "Tools");
     }
 }

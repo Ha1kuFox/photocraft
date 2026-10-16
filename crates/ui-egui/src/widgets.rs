@@ -1935,6 +1935,7 @@ mod tests {
     /// `%`'s, so the number lines up with the box and its unit (#5150).
     #[test]
     fn value_field_digits_ink_is_centred_and_level_with_the_unit() {
+        let _gpu = photocraft_testkit::gpu_lock();
         let scale = 4.0;
         for kind in [crate::theme::ThemeKind::Pro, crate::theme::ThemeKind::Studio] {
             let mut h = Harness::builder().with_size(egui::vec2(100.0, 40.0)).with_pixels_per_point(scale).wgpu().build_ui_state(

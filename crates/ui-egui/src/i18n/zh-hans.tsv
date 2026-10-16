@@ -2463,7 +2463,6 @@ cameraRaw	Blending	混合
 	Redrawing	正在重绘
 	This redraw took {seconds} s on the CPU.	此次 CPU 重绘耗时 {seconds} 秒。
 	Edits that change the whole document, such as a layer's blend mode, opacity or visibility, redraw all of it.	更改整个文档的编辑（如图层的混合模式、不透明度或可见性）会重绘整个文档。
-	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	图层超出 GPU 内存预算。在 首选项 › 性能 中提高内存使用量可增加预算，最多为本机内存的四分之一。
 	The GPU compositor wasn't used: {reason}	未使用 GPU 合成器：{reason}
 fontWeight	Thin	极细
 fontWeight	ExtraLight	特细
@@ -2814,3 +2813,23 @@ curves	Smooth	平滑
 	set name	组名称
 	{set} (modified)	{set}（已修改）
 	Random	随机
+	Accept and Go to Conflict	接受并转到冲突
+	Changes undone.	已撤消更改。
+	Choose a new shortcut for this command, or leave it without one.	为此命令选择新的快捷键，或保留为无快捷键。
+	Put this command's shortcuts back as they were	将此命令的快捷键恢复原样
+	Take the shortcut from the other command and select it	从另一个命令移除该快捷键并选中它
+	Undo Changes	撤消更改
+	{shortcut} is reserved by the system and can't be assigned.	{shortcut} 由系统保留，无法指定。
+	Low-Latency Drawing (vsync off, applies at next launch)	低延迟绘画（关闭垂直同步，下次启动时生效）
+# Free Transform: a new layer while the box is open (#5859)
+	Free Transform is still being applied; try again when it has finished.	自由变换仍在应用中；请在完成后重试。
+	The transform couldn't be applied.	无法应用变换。
+# Preferences › Performance › GPU Memory; the status bar and slow-redraw notice
+	Its layers need {needed} of GPU memory; the budget leaves them {budget}.	其图层需要 {needed} GPU 内存；预算只留给它们 {budget}。
+	Set GPU Memory in Preferences › Performance to what your graphics card can hold, at most 3/8 of its memory. Automatic follows Memory Usage, within a quarter of this computer's memory and 3/8 of the card's, and doesn't count the document against a card whose memory is known. The status bar shows GPU Memory Full while they don't fit.	在 首选项 › 性能 中将 GPU 内存设置为显卡能容纳的大小，最多为其显存的 3/8。自动跟随内存使用量，不超过本机内存的四分之一和显卡显存的 3/8，且在显存已知的显卡上不把文档计入。在图层放不下期间，状态栏显示“GPU 内存已满”。
+	GPU Memory Full	GPU 内存已满
+	The layers need {needed} of GPU memory and may hold {budget}, so edits that redraw the whole document do it on the CPU. Click to set GPU Memory.	图层需要 {needed} GPU 内存，但只能占用 {budget}，因此重绘整个文档的编辑会在 CPU 上进行。点击以设置 GPU 内存。
+	GPU memory budget: {budget}	GPU 内存预算：{budget}
+	This document's layers: {needed} of {budget} for layers	此文档的图层：图层可用 {budget} 中的 {needed}
+	This document's layers need {needed} but may hold {budget}: whole-document redraws use the CPU	此文档的图层需要 {needed}，但只能占用 {budget}：整个文档的重绘使用 CPU
+	GPU Memory (MB, 0 = Automatic)	GPU 内存（MB，0 = 自动）

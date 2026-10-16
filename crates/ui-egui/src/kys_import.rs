@@ -35,8 +35,7 @@ pub fn plan(app: &PhotocraftApp, set: &KysSet) -> Plan {
 /// The set's tool keys matched to our tools by name (Photoshop's names are ours): tool
 /// shortcut id (`tools.select.move`) → letter, and the tools PhotoCraft doesn't have.
 pub fn plan_tools(set: &KysSet) -> (BTreeMap<String, String>, Vec<String>) {
-    let tools: Vec<(String, &str)> = crate::state::Tool::ALL.into_iter().map(|t| (crate::tool_shortcuts::id(t), t.label())).collect();
-    photocraft_engine::kys::plan_tools(tools.iter().map(|(id, name)| (id.as_str(), *name)), set)
+    photocraft_engine::kys::plan_tools(photocraft_engine::shell_commands::TOOLS.iter().map(|t| (t.0, t.1)), set)
 }
 
 /// Put the plan into the open Keyboard Shortcuts dialog (opening one when none is), as

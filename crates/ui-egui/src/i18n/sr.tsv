@@ -2845,7 +2845,6 @@ cameraRaw	Blending	Stapanje
 	Large document: redrawing on the CPU	Veliki dokument: ponovno iscrtavanje procesorom
 	This redraw took {seconds} s on the CPU.	Ovo iscrtavanje je trajalo {seconds} s na procesoru.
 	Edits that change the whole document, such as a layer's blend mode, opacity or visibility, redraw all of it.	Izmene koje menjaju ceo dokument, kao što su režim stapanja, neprozirnost ili vidljivost sloja, ponovo iscrtavaju ceo dokument.
-	Its layers don't fit the GPU memory budget. Raising Memory usage in Preferences › Performance raises the budget, up to a quarter of this computer's memory.	Njegovi slojevi ne staju u budžet GPU memorije. Povećanje vrednosti Korišćenje memorije u Podešavanja › Performanse povećava budžet, do četvrtine memorije ovog računara.
 	The GPU compositor wasn't used: {reason}	GPU kompozitor nije korišćen: {reason}
 fontWeight	Thin	Tanko
 fontWeight	ExtraLight	Ekstra lagano
@@ -4271,3 +4270,23 @@ shape	Appearance	Izgled
 	There are too many sets: delete one first.	Previše skupova: prvo obrišite jedan.
 	set name	ime skupa
 	{set} (modified)	{set} (izmenjen)
+	Accept and Go to Conflict	Prihvati i idi na sukob
+	Changes undone.	Izmene su poništene.
+	Choose a new shortcut for this command, or leave it without one.	Izaberite novu prečicu za ovu komandu ili je ostavite bez prečice.
+	Put this command's shortcuts back as they were	Vrati prečice ove komande kakve su bile
+	Take the shortcut from the other command and select it	Uzmi prečicu drugoj komandi i izaberi je
+	Undo Changes	Poništi izmene
+	{shortcut} is reserved by the system and can't be assigned.	{shortcut} je rezervisana od strane sistema i ne može se dodeliti.
+	Low-Latency Drawing (vsync off, applies at next launch)	Crtanje sa malim kašnjenjem (bez vsync-a, primenjuje se pri sledećem pokretanju)
+# Free Transform: a new layer while the box is open (#5859)
+	Free Transform is still being applied; try again when it has finished.	Slobodna transformacija se još primenjuje; pokušajte ponovo kad se završi.
+	The transform couldn't be applied.	Transformacija nije mogla da se primeni.
+# Preferences › Performance › GPU Memory; the status bar and slow-redraw notice
+	Its layers need {needed} of GPU memory; the budget leaves them {budget}.	Njegovim slojevima treba {needed} GPU memorije; budžet im ostavlja {budget}.
+	Set GPU Memory in Preferences › Performance to what your graphics card can hold, at most 3/8 of its memory. Automatic follows Memory Usage, within a quarter of this computer's memory and 3/8 of the card's, and doesn't count the document against a card whose memory is known. The status bar shows GPU Memory Full while they don't fit.	Podesite GPU memoriju u Podešavanja › Performanse na onoliko koliko vaša grafička kartica može da primi, najviše 3/8 njene memorije. Automatski prati Korišćenje memorije, u okviru četvrtine memorije ovog računara i 3/8 memorije kartice, i ne računa dokument kod kartice čija je memorija poznata. Dok ne staju, statusna traka prikazuje GPU memorija je puna.
+	GPU Memory Full	GPU memorija je puna
+	The layers need {needed} of GPU memory and may hold {budget}, so edits that redraw the whole document do it on the CPU. Click to set GPU Memory.	Slojevima treba {needed} GPU memorije, a smeju da zauzmu {budget}, pa izmene koje ponovo iscrtavaju ceo dokument to rade na CPU-u. Kliknite da podesite GPU memoriju.
+	GPU memory budget: {budget}	Budžet GPU memorije: {budget}
+	This document's layers: {needed} of {budget} for layers	Slojevi ovog dokumenta: {needed} od {budget} za slojeve
+	This document's layers need {needed} but may hold {budget}: whole-document redraws use the CPU	Slojevima ovog dokumenta treba {needed}, a smeju da zauzmu {budget}: ceo dokument se ponovo iscrtava na CPU-u
+	GPU Memory (MB, 0 = Automatic)	GPU memorija (MB, 0 = Automatski)
