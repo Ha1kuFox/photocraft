@@ -262,8 +262,21 @@ impl PhotocraftApp {
             match e {
                 OsEvent::Open(paths) => {
                     self.open_paths(&paths);
-                    // Bring the window forward when another app (Finder, the Dock) asked us to open.
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                    // Bring the window forward when another app (Finder, the Dock, Explorer via a
+                    // second launch) asked us to open; restore it first if it was minimized.
+                    if ctx.input(|i| i.viewport().minimized) == Some(true) {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                    }
+                    // Native Wayland lets a window come forward only with the launcher's activation
+                    // token, which winit can't apply to an existing window (its focus is a no-op
+                    // there): mark the window as wanting attention instead, so the taskbar
+                    // highlights it rather than the file opening out of sight.
+                    let raise = if self.services.is_wayland {
+                        egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational)
+                    } else {
+                        egui::ViewportCommand::Focus
+                    };
+                    ctx.send_viewport_cmd(raise);
                     ctx.request_repaint();
                 }
                 OsEvent::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),

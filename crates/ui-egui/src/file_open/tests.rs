@@ -317,6 +317,28 @@ fn os_open_events_open_files_with_paths() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The viewport commands an `Open` event sends: focus, or an attention request on native Wayland
+/// where winit can't focus (#3708).
+fn raise_commands(is_wayland: bool) -> Vec<egui::ViewportCommand> {
+    let (mut app, _) = app_with(Vec::new());
+    app.services.is_wayland = is_wayland;
+    let mut queue = vec![OsEvent::Open(Vec::new())];
+    app.services.os_events = Some(Box::new(move || std::mem::take(&mut queue)));
+    let mut out = egui::Context::default().run_ui(egui::RawInput::default(), |ui| app.drain_os_events(ui.ctx()));
+    out.textures_delta.clear();
+    out.viewport_output.get(&egui::ViewportId::ROOT).map(|v| v.commands.clone()).unwrap_or_default()
+}
+
+#[test]
+fn an_os_open_brings_the_window_forward_or_asks_for_attention_on_wayland() {
+    use egui::{UserAttentionType, ViewportCommand};
+    let attention = ViewportCommand::RequestUserAttention(UserAttentionType::Informational);
+    let x11 = raise_commands(false);
+    assert!(x11.contains(&ViewportCommand::Focus) && !x11.contains(&attention), "{x11:?}");
+    let wayland = raise_commands(true);
+    assert!(wayland.contains(&attention) && !wayland.contains(&ViewportCommand::Focus), "{wayland:?}");
+}
+
 #[test]
 fn os_quit_and_empty_events_do_not_panic() {
     let (mut app, _) = app_with(Vec::new());

@@ -181,16 +181,21 @@ fn screen(doc: Document, setup: &[(&str, serde_json::Value)], name: &str) -> Opt
     let ok2 = ok.clone();
     let setup: Vec<(String, serde_json::Value)> = setup.iter().map(|(a, b)| (a.to_string(), b.clone())).collect();
     let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        egui_kittest::Harness::builder().with_size(egui::vec2(1000.0, 700.0)).with_pixels_per_point(1.0).with_max_steps(64).wgpu().build_eframe(move |cc| {
-            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
-            let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
-            if let Some(rs) = cc.wgpu_render_state.as_ref() {
-                ok2.store(gpu_canvas::supports_f16_canvas(&rs.adapter) && std::env::var("PHOTOCRAFT_CANVAS_F16").as_deref() != Ok("0"), Ordering::SeqCst);
-                app.set_wgpu(rs.clone());
-            }
-            app.session.open_document(doc, None);
-            app
-        })
+        egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1000.0, 700.0))
+            .with_pixels_per_point(1.0)
+            .with_max_steps(64)
+            .wgpu_setup(gpu_canvas::wgpu_setup())
+            .build_eframe(move |cc| {
+                PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+                let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+                if let Some(rs) = cc.wgpu_render_state.as_ref() {
+                    ok2.store(gpu_canvas::supports_f16_canvas(&rs.adapter) && std::env::var("PHOTOCRAFT_CANVAS_F16").as_deref() != Ok("0"), Ordering::SeqCst);
+                    app.set_wgpu(rs.clone());
+                }
+                app.session.open_document(doc, None);
+                app
+            })
     }));
     let Ok(mut harness) = built else {
         eprintln!("skipping: no GPU adapter");
