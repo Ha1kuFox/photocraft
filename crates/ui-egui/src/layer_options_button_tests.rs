@@ -56,3 +56,25 @@ fn ellipsis_menu_acts_on_the_selected_layer() {
     let fields = &h.state().ui.dialogs[0].fields;
     assert_eq!(fields.get("name").and_then(|v| v.as_str()), Some("Background copy"));
 }
+
+/// The header's clipping-mask button next to the locks: pens get Create/Release without
+/// right-click or Cmd+Alt+G.
+fn clipped(app: &PhotocraftApp) -> Option<bool> {
+    let st = app.session.active()?;
+    st.active_layer.and_then(|id| st.doc.layer(id)).map(|l| l.clipped)
+}
+
+#[test]
+fn clip_button_clips_to_below_and_releases() {
+    let mut h = harness();
+    // A normal layer above the Background: clipping needs a layer below.
+    h.state_mut().session.execute("layer.new.layer", json!({})).unwrap();
+    h.run_steps(3);
+    assert_eq!(clipped(h.state()), Some(false));
+    h.get_by_label("Create Clipping Mask").click();
+    h.run_steps(3);
+    assert_eq!(clipped(h.state()), Some(true), "click clips to the layer below");
+    h.get_by_label("Release Clipping Mask").click();
+    h.run_steps(3);
+    assert_eq!(clipped(h.state()), Some(false), "click again releases");
+}

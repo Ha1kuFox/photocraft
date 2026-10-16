@@ -2354,6 +2354,20 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     actions.push(simple_lock_toggle(crate::doc_props_ui::is_background(&doc, l), l, &targets));
                 }
             }
+            // Clipping-mask shortcut for pens (no right-click or Cmd+Alt+G): without a
+            // clip this clips to the layer below, with one it releases, like the row menu.
+            {
+                let clipped = active_layer.is_some_and(|l| l.clipped);
+                let (cmd, tip, icon) = if clipped {
+                    ("layer.releaseClippingMask", tl!("Release Clipping Mask"), "clip-release")
+                } else {
+                    ("layer.createClippingMask", tl!("Create Clipping Mask"), "clip-below")
+                };
+                let enabled = active_layer.is_some() && app.session.is_enabled(cmd);
+                if ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, 20.0, clipped, tip)).inner.clicked() {
+                    actions.push((cmd.into(), json!({})));
+                }
+            }
             ui.add_enabled_ui(!bg, |ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let mut f = l.fill_opacity * 100.0;
