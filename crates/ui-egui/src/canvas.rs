@@ -173,6 +173,22 @@ pub struct Drag {
     /// every Move-tool drag with a selection does (`move_ui::moves_selected_pixels_with`).
     pub sel_move: Option<bool>,
     pub lasso: Option<crate::lasso_ui::Lasso>,
+    /// Hold-to-correct dwell tracking: anchor position, the time it was set, and how many
+    /// points a fit was last attempted with (a static stroke fits at most once per length).
+    pub hold_anchor: Option<([f64; 2], f64, usize)>,
+    /// Hold-to-correct in progress: the stroke corrects on release (see `tick_hold_correct`).
+    pub correcting: Option<Correcting>,
+}
+
+/// Hold-to-correct in progress: the raw stroke's engine points, its current fit, and the
+/// pointer position of the last move-phase update (moves translate the fit until release).
+#[derive(Clone, Debug)]
+pub struct Correcting {
+    pub(crate) raw: Vec<photocraft_engine::paint::StrokePoint>,
+    /// The trigger fit, never mutated: every move rebuilds from it.
+    pub(crate) base: photocraft_engine::paint::correct::Correction,
+    pub(crate) correction: photocraft_engine::paint::correct::Correction,
+    pub(crate) cursor: [f64; 2],
 }
 
 impl Drag {
@@ -190,6 +206,8 @@ impl Drag {
             reposition: false,
             sel_move: None,
             lasso: None,
+            hold_anchor: None,
+            correcting: None,
         }
     }
 
@@ -720,6 +738,11 @@ fn feed_live_stroke(app: &mut PhotocraftApp) {
     if app.defer_live_stroke {
         return;
     }
+    // Hold-to-correct move phase owns the preview: moves only translate the fit there
+    // (`tick_hold_correct`), so the raw points must not reach the live stroke.
+    if app.drag.as_ref().is_some_and(|d| d.correcting.is_some()) {
+        return;
+    }
     let (Some(l), Some(d)) = (app.live_stroke.as_mut(), app.drag.as_ref()) else { return };
     let pose = &app.stylus.stroke;
     // The same times `stroke_points` gives the commit (from the drag's first point).
@@ -744,6 +767,156 @@ fn feed_live_stroke(app: &mut PhotocraftApp) {
         Err(_) => app.live_stroke = None,
     }
     app.stroke_trace.stroke(crate::gpu_canvas::now_ms() - started);
+}
+
+/// Hold-to-correct dwell radius in document pixels at 100% zoom (tighter when zoomed in).
+const HOLD_STILL_PX: f64 = 4.0;
+/// A fit needs this many raw points and this much path; taps never correct.
+const HOLD_MIN_POINTS: usize = 8;
+const HOLD_MIN_LEN: f64 = 16.0;
+
+/// Hold-to-correct can arm for this frame: enabled, a brush-engine live stroke, no symmetry
+/// (mirrors can't be re-rendered from a fit), no airbrush build-up (holding still is its job).
+fn hold_correct_armed(app: &PhotocraftApp) -> bool {
+    if !app.ui.tool_options.hold_correct {
+        return false;
+    }
+    if !matches!(app.live_stroke.as_ref().map(|l| &l.stroke), Some(EngineStroke::Brush(_))) {
+        return false;
+    }
+    if app.session.tools.brush.build_up {
+        return false;
+    }
+    if app.session.active().is_some_and(|st| st.symmetry.is_some()) {
+        return false;
+    }
+    app.drag.is_some()
+}
+
+/// Map the drag's points to engine points: the same mapping `feed_live_stroke` feeds the
+/// live stroke (pressure, tilt, rotation, times relative to the first point).
+fn hold_raw_points(stylus: &crate::stylus::Stylus, d: &Drag) -> Vec<photocraft_engine::paint::StrokePoint> {
+    let pose = &stylus.stroke;
+    let t0 = stylus.point_ms(0);
+    d.points
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            if !(p[0].is_finite() && p[1].is_finite()) {
+                return None;
+            }
+            let t = pose.get(i).or(pose.last()).copied().unwrap_or_default();
+            let mut sp = photocraft_engine::paint::StrokePoint::new(p[0], p[1], p[2] as f32);
+            (sp.tilt_x, sp.tilt_y, sp.rotation) = (t[0], t[1], t[2]);
+            sp.time = stylus.point_ms(i) - t0;
+            Some(sp)
+        })
+        .collect()
+}
+
+/// Hold-to-correct dwell/move tracking, after the frame's live-stroke feed. The dwell runs on
+/// the stylus clock (pointer-event time, like `tool_move`'s held-pen repeat), so no repaint
+/// loop is needed: a held pen keeps delivering micro-move events. A still pointer arms the fit
+/// once the dwell elapses; after the fit, moves translate it until release (`commit_brush_stroke`
+/// commits raw first, then the fit, so undo steps back to raw).
+fn tick_hold_correct(app: &mut PhotocraftApp) {
+    if !hold_correct_armed(app) {
+        return;
+    }
+    // Hostile prefs (a hand-edited file) can't wedge the dwell: clamp it.
+    let dwell = f64::from(app.ui.tool_options.hold_correct_ms.clamp(100, 5000));
+    let now = app.stylus.clock_ms;
+    let radius = (HOLD_STILL_PX / f64::from(app.point_zoom())).clamp(1.0, 8.0);
+    let (Some(d), Some(l)) = (&mut app.drag, &mut app.live_stroke) else { return };
+    let cur = d.points.last().map(|p| [p[0], p[1]]).unwrap_or(d.start);
+    if !cur.iter().all(|c| c.is_finite()) {
+        return;
+    }
+    if let Some(c) = d.correcting.as_mut() {
+        // Move phase: the stroke start stays fixed, the end follows the pointer. Primitives
+        // rebuild between the two; an unrecognized stroke refits its adjusted raw points.
+        // An unfittable cursor freezes the shape but keeps tracking the pointer, so a later
+        // move resumes from an honest position instead of teleporting.
+        if (cur[0] - c.cursor[0]).hypot(cur[1] - c.cursor[1]) < 0.75 {
+            return;
+        }
+        if !(cur[0].is_finite() && cur[1].is_finite()) {
+            return;
+        }
+        let start = [c.raw[0].x, c.raw[0].y];
+        let next = if matches!(c.base, photocraft_engine::paint::correct::Correction::Smooth(_)) {
+            let mut adj = c.raw.clone();
+            if let Some(last) = adj.last_mut() {
+                last.x = cur[0];
+                last.y = cur[1];
+            }
+            photocraft_engine::paint::correct::fit(&adj).map(|f| (f, adj))
+        } else {
+            photocraft_engine::paint::correct::stretch(&c.base, start, cur).map(|f| {
+                let raw = c.raw.clone();
+                (f, raw)
+            })
+        };
+        c.cursor = cur;
+        let Some((next_correction, next_raw)) = next else { return };
+        let fitted = photocraft_engine::paint::correct::stroke_points(&next_correction, &next_raw);
+        if fitted.is_empty() {
+            return;
+        }
+        if let EngineStroke::Brush(live) = &mut l.stroke
+            && let Ok(r) = live.retarget(&fitted)
+        {
+            // The canvas repaints only reported damage: without this push the fit
+            // stays invisible until the release commit redraws everything.
+            l.damage.push(r);
+            l.fed = d.points.len();
+            c.correction = next_correction;
+            c.raw = next_raw;
+        }
+        return;
+    }
+    // Dwell phase: a moved pointer re-arms; a static stroke fits at most once per length.
+    if let Some((a, _t, _n)) = d.hold_anchor
+        && (cur[0] - a[0]).hypot(cur[1] - a[1]) > radius
+    {
+        d.hold_anchor = Some((cur, now, usize::MAX));
+        return;
+    }
+    let (a_time, a_n) = match d.hold_anchor {
+        Some((_, t, n)) => (t, n),
+        None => {
+            d.hold_anchor = Some((cur, now, usize::MAX));
+            return;
+        }
+    };
+    if now - a_time < dwell {
+        return;
+    }
+    let raw = hold_raw_points(&app.stylus, d);
+    if raw.len() < HOLD_MIN_POINTS || raw.len() == a_n {
+        return;
+    }
+    d.hold_anchor = Some((cur, a_time, raw.len()));
+    let raw_len: f64 = raw.iter().filter(|p| p.x.is_finite() && p.y.is_finite()).count() as f64;
+    if raw_len < HOLD_MIN_POINTS as f64 {
+        return;
+    }
+    let coords: Vec<[f64; 2]> = raw.iter().map(|p| [p.x, p.y]).collect();
+    if photocraft_engine::paint::correct::path_length(&coords) < HOLD_MIN_LEN {
+        return;
+    }
+    let Some(correction) = photocraft_engine::paint::correct::fit(&raw) else { return };
+    let fitted = photocraft_engine::paint::correct::stroke_points(&correction, &raw);
+    if fitted.is_empty() {
+        return;
+    }
+    if let EngineStroke::Brush(live) = &mut l.stroke
+        && let Ok(r) = live.retarget(&fitted)
+    {
+        l.damage.push(r);
+        l.fed = d.points.len();
+        d.correcting = Some(Correcting { raw, base: correction.clone(), correction, cursor: cur });
+    }
 }
 
 /// The points the live retouching stroke has rendered.
@@ -3659,6 +3832,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             app.defer_live_stroke = false;
             // One live-stroke update for the whole frame, not one per recovered sample.
             feed_live_stroke(app);
+            tick_hold_correct(app);
             crate::magnetic_lasso_ui::flush(app);
         }
         if buttons.stopped {
@@ -5488,6 +5662,7 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
             }
             tool_move(app, x, y, pressure, mods);
             feed_live_stroke(app);
+            tick_hold_correct(app);
         }
         ToolEvent::Up { x, y } => {
             if tool.is_type()
@@ -5695,6 +5870,10 @@ fn finish_selection_drag(app: &mut PhotocraftApp, floating: bool, start: [f64; 2
 /// offered to the commit (`Session::offer_live_stroke`), so release costs no second render, and
 /// the canvas then refreshes only what it hadn't shown yet (`CommittedStroke`).
 fn commit_brush_stroke(app: &mut PhotocraftApp, d: &Drag) {
+    if d.correcting.is_some() {
+        commit_corrected_stroke(app, d);
+        return;
+    }
     let live = app.live_stroke.take();
     let mut p = stroke_params(app, d, &app.stylus.stroke_points(&d.points));
     if let Some(seed) = live.as_ref().and_then(|l| l.stroke.seed()) {
@@ -5732,8 +5911,21 @@ fn commit_brush_stroke(app: &mut PhotocraftApp, d: &Drag) {
     {
         app.session.clear_live_stroke();
     }
+    finish_brush_commit(app, doc, key, damage, stroke_command(app, d.tool), p);
+}
+
+/// The tail of a brush-stroke commit shared by the plain and the hold-to-corrected flows:
+/// run the command, then refresh only what the commit changed (`CommittedStroke`).
+fn finish_brush_commit(
+    app: &mut PhotocraftApp,
+    doc: photocraft_doc::DocId,
+    key: u64,
+    damage: Vec<DRect>,
+    command: &str,
+    p: serde_json::Value,
+) {
     let started = crate::gpu_canvas::now_ms();
-    let result = app.run(stroke_command(app, d.tool), p);
+    let result = app.run(command, p);
     app.stroke_trace.stroke(crate::gpu_canvas::now_ms() - started);
     app.session.clear_live_stroke();
     let Ok(r) = result else { return };
@@ -5748,6 +5940,74 @@ fn commit_brush_stroke(app: &mut PhotocraftApp, d: &Drag) {
         // Raw preview key 0 = the document itself (its colour display folded in).
         shown_as_document(app, doc, |k| shown.since(k).is_some());
     }
+}
+
+/// Engine points back to `stroke_params` vectors
+/// ([x, y, pressure, tiltX, tiltY, rotation, timeMs, wheel]).
+fn stroke_vecs(pts: &[photocraft_engine::paint::StrokePoint]) -> Vec<Vec<f64>> {
+    pts.iter()
+        .map(|sp| {
+            vec![
+                sp.x,
+                sp.y,
+                f64::from(sp.pressure),
+                f64::from(sp.tilt_x),
+                f64::from(sp.tilt_y),
+                f64::from(sp.rotation),
+                sp.time,
+                f64::from(sp.wheel),
+            ]
+        })
+        .collect()
+}
+
+/// Commit a hold-to-corrected stroke: the raw stroke first (exactly like `paint.stroke`),
+/// then `paint.correctStroke` replaces it with the fit, so undo steps back to the raw stroke.
+/// Every fallback still matches the preview: a failed fit-back commits the fit alone, and a
+/// missing live stroke commits it without preview bookkeeping.
+fn commit_corrected_stroke(app: &mut PhotocraftApp, d: &Drag) {
+    let Some(c) = d.correcting.clone() else { return };
+    let fitted = photocraft_engine::paint::correct::stroke_points(&c.correction, &c.raw);
+    let Some(mut l) = app.live_stroke.take() else {
+        let _ = app.run(stroke_command(app, d.tool), stroke_params(app, d, &stroke_vecs(&fitted)));
+        return;
+    };
+    let seed = l.stroke.seed();
+    // Back to raw for entry 1 (same seed, so the re-render is pixel-identical).
+    let mut raw_ok = false;
+    if let EngineStroke::Brush(live) = &mut l.stroke
+        && let Ok(r) = live.retarget(&c.raw)
+    {
+        l.damage.push(r);
+        raw_ok = true;
+    }
+    if !raw_ok {
+        let mut pf = stroke_params(app, d, &stroke_vecs(&fitted));
+        if let Some(seed) = seed {
+            pf["seed"] = json!(seed);
+        }
+        let LiveStroke { stroke, doc, key, damage, .. } = l;
+        if let EngineStroke::Brush(stroke) = stroke
+            && app.session.offer_live_stroke(*stroke).is_err()
+        {
+            app.session.clear_live_stroke();
+        }
+        finish_brush_commit(app, doc, key, damage, stroke_command(app, d.tool), pf);
+        return;
+    }
+    let LiveStroke { stroke, doc, key, damage, .. } = l;
+    if let EngineStroke::Brush(stroke) = stroke
+        && app.session.offer_live_stroke(*stroke).is_err()
+    {
+        app.session.clear_live_stroke();
+    }
+    let mut p = stroke_params(app, d, &stroke_vecs(&c.raw));
+    if let Some(seed) = seed {
+        p["seed"] = json!(seed);
+    }
+    p["correctedPoints"] = json!(stroke_vecs(&fitted));
+    p["strokeCommand"] = json!(stroke_command(app, d.tool));
+    finish_brush_commit(app, doc, key, damage, "paint.correctStroke", p);
 }
 
 /// Pencil (and a Pencil-mode Eraser) dabs sit on the pixel grid. Clicks anywhere inside one

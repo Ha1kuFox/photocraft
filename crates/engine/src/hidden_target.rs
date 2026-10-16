@@ -15,6 +15,7 @@ pub const HIDDEN: &str = "Could not complete your request because the target lay
 const GATED: &[&str] = &[
     "paint.stroke",
     "paint.pencil",
+    "paint.correctStroke",
     "paint.mixerBrush",
     "paint.colorReplacement",
     "paint.bucket",

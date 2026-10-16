@@ -9,6 +9,14 @@ use crate::state::Tool;
 
 /// Options-bar harness in the Studio (non-pro) theme, like the bucket UI tests.
 fn options_bar_harness(tool: Tool) -> egui_kittest::Harness<'static, PhotocraftApp> {
+    options_bar_harness_themed(tool, crate::theme::ThemeKind::Studio)
+}
+
+/// Options-bar harness in an explicit theme.
+fn options_bar_harness_themed(
+    tool: Tool,
+    theme: crate::theme::ThemeKind,
+) -> egui_kittest::Harness<'static, PhotocraftApp> {
     let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
     app.session.prefs.edit(|p| p.interface.language = "en".into());
     app.run("file.new", json!({"width": 40, "height": 30})).unwrap();
@@ -22,7 +30,7 @@ fn options_bar_harness(tool: Tool) -> egui_kittest::Harness<'static, PhotocraftA
         },
         app,
     );
-    PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::Studio);
+    PhotocraftApp::setup_context(&h.ctx, theme);
     h.run_steps(4);
     h
 }
@@ -92,4 +100,18 @@ fn studio_brush_bar_has_airbrush_and_smoothing_options() {
 fn studio_bar_has_home_toggle() {
     let h = options_bar_harness(Tool::Move);
     assert!(h.query_by_label("Home").is_some(), "options bar shows Home");
+}
+
+#[test]
+fn hold_to_correct_toggle_in_both_layouts_and_flips_the_setting() {
+    use egui_kittest::kittest::Queryable;
+    for theme in [crate::theme::ThemeKind::Pro, crate::theme::ThemeKind::Studio] {
+        let h = options_bar_harness_themed(Tool::Brush, theme);
+        assert!(h.query_by_label("Hold to correct").is_some(), "{theme:?} options bar shows Hold to correct");
+    }
+    let mut h = options_bar_harness(Tool::Brush);
+    assert!(h.state().ui.tool_options.hold_correct);
+    h.get_by_label("Hold to correct").click();
+    h.run_steps(2);
+    assert!(!h.state().ui.tool_options.hold_correct, "clicking the toggle disables hold-to-correct");
 }

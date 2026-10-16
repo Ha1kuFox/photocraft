@@ -719,6 +719,14 @@ pub struct ToolOptions {
     /// Eyedropper › Show Sampling Ring.
     #[serde(default = "yes")]
     pub eyedropper_ring: bool,
+    /// Hold-to-correct: holding the pointer still at the end of a brush stroke replaces
+    /// it with a fitted line or shape (Clip Studio behaviour); the raw stroke stays one
+    /// undo step back. See `photocraft_paint::correct`.
+    #[serde(default = "yes")]
+    pub hold_correct: bool,
+    /// Hold-to-correct dwell time in milliseconds before the fit applies.
+    #[serde(default = "default_hold_correct_ms")]
+    pub hold_correct_ms: u32,
 }
 
 fn yes() -> bool {
@@ -768,6 +776,10 @@ fn one_u32() -> u32 {
 
 fn default_eyedropper_sample() -> String {
     "all".into()
+}
+
+fn default_hold_correct_ms() -> u32 {
+    500
 }
 
 impl Default for ToolOptions {
@@ -874,6 +886,8 @@ impl Default for ToolOptions {
             eyedropper_size: 1,
             eyedropper_sample: default_eyedropper_sample(),
             eyedropper_ring: true,
+            hold_correct: true,
+            hold_correct_ms: default_hold_correct_ms(),
         }
     }
 }

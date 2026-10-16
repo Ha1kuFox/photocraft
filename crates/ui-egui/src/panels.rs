@@ -1018,6 +1018,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         opt_label(ui, tl!("Smoothing"));
                         smoothing_field(ui, b, 58.0);
                         smoothing_options(ui, b);
+                        widgets::checkbox(ui, &mut app.ui.tool_options.hold_correct, tl!("Hold to correct"));
                         widgets::vline(ui, 22.0);
                         if icons::button(ui, "circle-dot", 24.0, b.pressure_size, tl!("Always use pressure for size")).clicked() {
                             b.pressure_size = !b.pressure_size;
@@ -1039,6 +1040,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         percent_field(ui, tl!("Opacity"), &mut b.opacity, 0.0..=100.0, if t.pro { 62.0 } else { 66.0 });
                         opt_label(ui, tl!("Smoothing"));
                         smoothing_field(ui, b, if t.pro { 58.0 } else { 66.0 });
+                        widgets::checkbox(ui, &mut app.ui.tool_options.hold_correct, tl!("Hold to correct"));
                         widgets::vline(ui, 22.0);
                         widgets::checkbox(ui, &mut app.ui.tool_options.pencil_auto_erase, tl!("Auto Erase"));
                     }
@@ -1074,6 +1076,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         opt_label(ui, tl!("Smoothing"));
                         smoothing_field(ui, b, 66.0);
                         smoothing_options(ui, b);
+                        widgets::checkbox(ui, &mut app.ui.tool_options.hold_correct, tl!("Hold to correct"));
                         widgets::vline(ui, 22.0);
                         widgets::toggle(ui, &mut b.pressure_size, tl!("Pressure for Size"));
                         widgets::toggle(ui, &mut b.pressure_opacity, tl!("Pressure for Opacity"));

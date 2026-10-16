@@ -1066,3 +1066,121 @@ fn brush_and_pencil_paint_a_cmyk_pick_with_the_picked_inks() {
         assert!(got.iter().zip(cyan).all(|(a, b)| (a - b).abs() < 0.02), "{cmd}: {got:?}");
     }
 }
+
+/// Hold-to-correct helpers: a deterministic hard brush and a wobbly horizontal stroke.
+fn correct_brush_params() -> Value {
+    json!({"brush": {"size": 5.0, "hardness": 1.0, "pressureSize": false, "spacing": 0.2, "opacity": 1.0, "flow": 1.0}, "smoothing": 0.0, "color": "#000000", "target": "pixels"})
+}
+
+fn wobbly_raw() -> Vec<Value> {
+    (0..20).map(|i| json!([10 + i * 6, 50 + if i % 2 == 0 { 3 } else { -3 }, 1.0])).collect()
+}
+
+fn fitted_line() -> Vec<Value> {
+    (0..20).map(|i| json!([10 + i * 6, 50, 1.0])).collect()
+}
+
+#[test]
+fn retarget_replaces_the_preview_keeping_seed() {
+    let s = session(200, 100);
+    let mut p = correct_brush_params();
+    p["points"] = json!([wobbly_raw()[0]]);
+    let mut live = LiveStroke::begin(&s, &p).unwrap();
+    let seed = live.seed;
+    let rest: Vec<StrokePoint> = wobbly_raw()[1..].iter().map(|v| StrokePoint::new(v[0].as_f64().unwrap(), v[1].as_f64().unwrap(), 1.0)).collect();
+    live.push(&rest).unwrap();
+    // Retargeting to the same points is a no-op pixel-wise.
+    let shown_before = live.doc.layer(s.active().unwrap().active_layer.unwrap()).unwrap().surface().unwrap().clone();
+    let fitted: Vec<StrokePoint> = fitted_line().iter().map(|v| StrokePoint::new(v[0].as_f64().unwrap(), v[1].as_f64().unwrap(), 1.0)).collect();
+    let dmg = live.retarget(&fitted).unwrap();
+    assert!(!dmg.is_empty(), "re-render reports damage");
+    assert!(dmg.contains(10, 54) && dmg.contains(40, 50), "damage covers the wiped raw and the new fit");
+    assert_eq!(live.seed, seed, "the seed survives retargeting");
+    assert_eq!(live.points, fitted);
+    let shown = live.doc.layer(s.active().unwrap().active_layer.unwrap()).unwrap().surface().unwrap().clone();
+    assert!(!same_pixels(&shown_before, &shown, Rect::new(0, 0, 200, 100)), "the preview changed");
+    assert!(shown.rgba(40, 50)[3] > 0.9, "the fitted line paints");
+    assert_eq!(shown.rgba(10, 54)[3], 0.0, "raw wobble pixels are gone");
+    // Hostile input is an error, not a panic, and leaves the preview alone.
+    let bad = vec![StrokePoint::new(f64::NAN, 0.0, 1.0)];
+    assert!(live.retarget(&bad).is_err());
+    assert_eq!(live.points, fitted);
+}
+
+#[test]
+fn correct_stroke_commits_two_entries_and_undo_returns_raw() {
+    let mut s = session(200, 100);
+    let before = s.active().unwrap().history.past_len();
+    let mut p = correct_brush_params();
+    p["points"] = json!([wobbly_raw()[0]]);
+    let mut live = LiveStroke::begin(&s, &p).unwrap();
+    let rest: Vec<StrokePoint> = wobbly_raw()[1..].iter().map(|v| StrokePoint::new(v[0].as_f64().unwrap(), v[1].as_f64().unwrap(), 1.0)).collect();
+    live.push(&rest).unwrap();
+    let seed = live.seed;
+    s.offer_live_stroke(live).unwrap();
+    let mut cp = correct_brush_params();
+    cp["points"] = json!(wobbly_raw());
+    cp["correctedPoints"] = json!(fitted_line());
+    cp["strokeCommand"] = json!("paint.stroke");
+    cp["seed"] = json!(seed);
+    let r = s.execute("paint.correctStroke", cp).unwrap();
+    assert_eq!(r["corrected"], json!(true));
+    assert_eq!(r["fromLive"], json!(true));
+    assert_eq!(s.active().unwrap().history.past_len(), before + 2, "raw + straighten entries");
+    assert!(surface(&s).rgba(40, 50)[3] > 0.9, "the fitted line is what shows");
+    s.undo();
+    assert!(surface(&s).rgba(10, 54)[3] > 0.0, "undo steps back to the raw stroke");
+    assert!(surface(&s).rgba(40, 50)[3] > 0.0, "raw pixels still there");
+    s.undo();
+    assert_eq!(surface(&s).rgba(40, 50)[3], 0.0, "second undo clears the stroke");
+    assert_eq!(surface(&s).rgba(10, 54)[3], 0.0);
+}
+
+#[test]
+fn correct_stroke_fails_gracefully() {
+    let mut s = session(60, 40);
+    // Missing or malformed correction params are errors, never panics.
+    for params in [
+        json!({"points": [[1, 1], [10, 10]]}),
+        json!({"points": [[1, 1], [10, 10]], "correctedPoints": []}),
+        json!({"points": [[1, 1], [10, 10]], "correctedPoints": [[1, 1]]}),
+        json!({"points": [[1, 1], [10, 10]], "correctedPoints": [[1, 1], [10, 10]], "strokeCommand": "layer.merge"}),
+    ] {
+        assert!(s.execute("paint.correctStroke", params).is_err());
+    }
+    // No live offer: the raw stroke still commits, uncorrected.
+    let r = s
+        .execute(
+            "paint.correctStroke",
+            json!({"points": [[4, 20], [40, 20]], "correctedPoints": [[4, 20], [40, 20]], "strokeCommand": "paint.stroke", "size": 5, "color": "#000000"}),
+        )
+        .unwrap();
+    assert_eq!(r["corrected"], json!(false));
+    assert!(surface(&s).rgba(20, 20)[3] > 0.0);
+}
+
+#[test]
+fn dbg_ui_sequence_with_retarget_back() {
+    let mut s = session(200, 100);
+    let mut p = correct_brush_params();
+    p["points"] = json!([wobbly_raw()[0]]);
+    let mut live = LiveStroke::begin(&s, &p).unwrap();
+    let rest: Vec<StrokePoint> = wobbly_raw()[1..].iter().map(|v| StrokePoint::new(v[0].as_f64().unwrap(), v[1].as_f64().unwrap(), 1.0)).collect();
+    live.push(&rest).unwrap();
+    let seed = live.seed;
+    // UI: retarget back to raw (same points here), then the corrected flow.
+    let raw: Vec<StrokePoint> = live.points.clone();
+    live.retarget(&raw).unwrap();
+    s.offer_live_stroke(live).unwrap();
+    let mut cp = correct_brush_params();
+    cp["points"] = json!(wobbly_raw());
+    cp["correctedPoints"] = json!(fitted_line());
+    cp["strokeCommand"] = json!("paint.stroke");
+    cp["seed"] = json!(seed);
+    s.execute("paint.correctStroke", cp).unwrap();
+    eprintln!("after: a4050={} a1054={}", surface(&s).rgba(40, 50)[3], surface(&s).rgba(10, 54)[3]);
+    s.undo();
+    eprintln!("undo1: a4050={} a1054={}", surface(&s).rgba(40, 50)[3], surface(&s).rgba(10, 54)[3]);
+    s.undo();
+    eprintln!("undo2: a4050={} a1054={}", surface(&s).rgba(40, 50)[3], surface(&s).rgba(10, 54)[3]);
+}

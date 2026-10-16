@@ -2772,6 +2772,9 @@ mod polygon_lasso_tests;
 mod studio_options_tests;
 
 #[cfg(test)]
+mod hold_correct_tests;
+
+#[cfg(test)]
 mod window_frame_tests;
 
 #[cfg(test)]

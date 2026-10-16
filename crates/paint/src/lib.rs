@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod bg_erase;
 pub mod brush;
+pub mod correct;
 pub mod curve;
 pub mod dynamics;
 pub mod mixer;

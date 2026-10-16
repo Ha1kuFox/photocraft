@@ -321,6 +321,74 @@ fn stroke_with(s: &mut Session, cmd: &str, p: &Value, label: &str, brush: BrushS
     Ok(r)
 }
 
+/// Hold-to-correct commit (`paint.correctStroke`): the raw stroke commits first (one journal
+/// entry, exactly like `paint.stroke`), then the fitted stroke replaces it (a second entry),
+/// so undo steps back to the raw stroke. Takes the raw live stroke's offer, like `stroke_with`
+/// does; without one it commits the raw points alone and reports `"corrected": false`.
+/// Symmetry falls back the same way: mirrors can't be re-rendered from a fit.
+fn correct_stroke(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "paint.correctStroke";
+    let raw = parse_points(p, CMD)?;
+    let fitted = parse_points(&json!({"points": p.get("correctedPoints")}), CMD)
+        .map_err(|_| bad(CMD, "missing `correctedPoints`"))?;
+    let cmd = p.get("strokeCommand").and_then(Value::as_str).filter(|c| *c == "paint.stroke" || *c == "paint.pencil").ok_or_else(|| bad(CMD, "`strokeCommand` is `paint.stroke` or `paint.pencil`"))?;
+    let symmetric = s.active().is_some_and(|st| st.symmetry.is_some());
+    // The raw live stroke's offer, matched the way `stroke_with` matches it.
+    let mut stripped = p.clone();
+    if let Some(o) = stripped.as_object_mut() {
+        o.remove("correctedPoints");
+        o.remove("strokeCommand");
+    }
+    let offer = s.live_commit.take().filter(|l| !symmetric && l.matches(s, cmd, &stripped, &raw));
+    let Some(l) = offer else {
+        // No offer (or symmetry): the raw stroke alone, through the normal path.
+        let mut r = s.execute(cmd, stripped)?;
+        if let Some(o) = r.as_object_mut() {
+            o.insert("corrected".into(), Value::Bool(false));
+        }
+        return Ok(r);
+    };
+    let pencil = cmd == "paint.pencil";
+    let brush0 = if pencil { pencil_brush(s, p)? } else { with_blend_mode(resolve_brush(s, p, cmd)?, p) };
+    let (id, brush, zoom) = stroke_target(s, p, brush0)?;
+    let label = if brush.erase && !clear_mode(p) { "Eraser" } else if pencil { "Pencil" } else { "Brush Tool" };
+    let auto_erase = pencil && flag(p, "autoErase", false);
+    let (bg, fg) = (s.tools.background, brush.color);
+    let cmyk = doc_cmyk_space(s);
+    // Entry 1: the raw stroke's pixels, taken from the live stroke.
+    let dmg = photocraft_color::convert::with_cmyk_space(cmyk.as_ref(), || {
+        s.edit(label, |doc, _| {
+            let (surf, _) = crate::channel_cmds::target_surface(doc, id, p)?;
+            *surf = l.surface;
+            Ok(l.bounds)
+        })
+    })?;
+    // Entry 2: the raw pixels back, then the fitted stroke with the live seed.
+    let mut fitted_brush = brush;
+    if let Some(seed) = l.seed {
+        fitted_brush.seed = seed;
+    }
+    let dmg2 = photocraft_color::convert::with_cmyk_space(cmyk.as_ref(), || {
+        s.edit("Straighten", |doc, _| {
+            let sel = doc.selection.clone();
+            let (surf, lock) = crate::channel_cmds::target_surface(doc, id, p)?;
+            if !l.bounds.is_empty() {
+                surf.write_region(l.bounds, &l.pre.read_region(l.bounds));
+            }
+            erase_locked(&mut fitted_brush, lock, bg);
+            if auto_erase {
+                apply_auto_erase(&mut fitted_brush, surf, fitted.first(), fg, bg);
+            }
+            Ok(photocraft_paint::render_stroke(surf, &fitted_brush, &fitted, sel.as_ref(), lock, zoom))
+        })
+    })?;
+    let mut r = damage_json(s, dmg.union(&dmg2));
+    if let Some(o) = r.as_object_mut() {
+        o.insert("fromLive".into(), Value::Bool(true));
+        o.insert("corrected".into(), Value::Bool(true));
+    }
+    Ok(r)
+}
 /// Pencil Auto Erase: a stroke that starts on a pixel of the foreground colour paints the
 /// background colour instead (Photoshop).
 fn apply_auto_erase(brush: &mut BrushSettings, surf: &Surface, start: Option<&StrokePoint>, fg: [f32; 4], bg: [f32; 4]) {
@@ -458,6 +526,9 @@ pub struct LiveCommit {
     pub(crate) points: Vec<StrokePoint>,
     pub(crate) surface: Surface,
     pub(crate) bounds: Rect,
+    /// The target surface before the stroke: `paint.correctStroke` restores the raw
+    /// stroke's bounds from it before rendering the fitted stroke.
+    pub(crate) pre: Surface,
 }
 
 impl LiveCommit {
@@ -541,7 +612,7 @@ impl LiveStroke {
     pub fn into_commit(mut self) -> Result<LiveCommit> {
         let bounds = self.bounds();
         let (surf, _) = crate::channel_cmds::target_surface(std::sync::Arc::make_mut(&mut self.doc), self.layer, &self.params)?;
-        Ok(LiveCommit { cmd: self.cmd, base: self.base, params: self.params, seed: Some(self.seed), points: self.points, surface: surf.clone(), bounds })
+        Ok(LiveCommit { cmd: self.cmd, base: self.base, params: self.params, seed: Some(self.seed), points: self.points, surface: surf.clone(), bounds, pre: self.pre })
     }
 
     /// Everything the stroke has touched so far.
@@ -618,6 +689,31 @@ impl LiveStroke {
             }
             Ok(dmg)
         })
+    }
+
+    /// Replace the preview with `pts` re-rendered from the pre-stroke surface, keeping the
+    /// brush and seed (hold-to-correct preview and its move). Returns the changed rectangle.
+    /// Symmetry mirrors are dropped: the canvas gates correction off while symmetry paints.
+    /// Invalid coordinates reject the batch without changing the preview.
+    pub fn retarget(&mut self, pts: &[StrokePoint]) -> Result<Rect> {
+        check_coords(pts, &self.cmd)?;
+        let bounds = self.bounds();
+        let (surf, _) = crate::channel_cmds::target_surface(std::sync::Arc::make_mut(&mut self.doc), self.layer, &self.params)?;
+        if !bounds.is_empty() {
+            surf.write_region(bounds, &self.pre.read_region(bounds));
+        }
+        let zoom = num(&self.params, "zoom").unwrap_or(1.0);
+        let brush = self.renderer.ctx.brush.clone();
+        self.renderer = StrokeRenderer::new(&brush, Some(surf.format()), zoom);
+        self.mirrors.clear();
+        self.mirror_distinct.clear();
+        self.union_live = None;
+        self.tail = Rect::EMPTY;
+        self.points.clear();
+        // The canvas repaints only reported damage: the restored region (the raw preview
+        // being wiped) must be part of it, or stale raw pixels linger as trails until
+        // something else repaints over them.
+        Ok(bounds.union(&self.push(pts)?))
     }
 }
 
@@ -1117,6 +1213,14 @@ pub fn specs() -> Vec<CommandSpec> {
             r##"{"points":[[x,y,pressure?,tiltX?,tiltY?,rotation?,timeMs?,wheel?],…],"brush":{…}?,"preset":name?,"size":0.5..5000 px?,"opacity":0..1?,"color":"#rrggbb"?=foreground,"mode":"normal|multiply|screen|…|clear (erases with this brush)"="normal","erase":bool?,"block":bool=false (a hard 16×16 screen-px square, 16/zoom doc px; size, opacity, flow, hardness and dynamics ignored: the Eraser's Block mode),"zoom":view zoom=1,"autoErase":bool=false,"seed":u64?,"target":"pixels"|"mask"|"quickMask"|{"channel":i}=Channels panel target}"##,
             has_paintable,
             pencil,
+            true
+        ),
+        spec!(
+            "paint.correctStroke",
+            "Straighten Stroke",
+            r##"{"points":[…raw stroke points, as paint.stroke],"correctedPoints":[…fitted points],"strokeCommand":"paint.stroke"|"paint.pencil" (whose params these are),"seed":u64?=the live stroke's (takes its offer: the raw stroke commits first, then the fitted one replaces it, so undo steps back to the raw stroke; without an offer, or with symmetry, only the raw stroke commits and "corrected" is false)}"##,
+            has_paintable,
+            correct_stroke,
             true
         ),
         spec!(
