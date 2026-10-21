@@ -39,6 +39,9 @@ const TAG: u64 = 1 << 58;
 const GRAB: f32 = 8.0;
 /// Screen distance from the line past which a dragged stop is deleted.
 const TEAR_OFF: f32 = 36.0;
+/// Pointer pause that settles a drag into a pixel preview (ms). While moving, only the
+/// guideline/handles draw (Krita does not render pixels mid-drag at all).
+pub(crate) const PREVIEW_PAUSE_MS: f64 = 120.0;
 /// Seconds between two clicks of a double-click.
 const DOUBLE_CLICK: f64 = 0.45;
 
@@ -75,6 +78,38 @@ pub struct LiveGradient {
     preset_stop: Option<Value>,
     /// Cached preview document by key.
     preview: Option<(u64, Arc<Document>)>,
+    /// Wall time of the last drag move (or panel/preset edit): pixel previews render only
+    /// after the pointer pauses (Krita shows just the guideline while dragging).
+    last_move_ms: f64,
+    /// Position of that move, in document coords: synthetic same-position repeats (the
+    /// canvas replays the latest position for held gestures with no raw moves) must not
+    /// reset the pause.
+    last_move_pos: Option<[f32; 2]>,
+    /// Split-preview base: exact cached composite below the changing clip group,
+    /// keyed by (revision, split point, output size).
+    split_base: Option<((u64, usize, u32, u32), photocraft_compose::Buffer)>,
+}
+
+/// Whether a gradient preview is settling: a drag or panel/preset edit is active, so the
+/// canvas should wake once past the preview pause to render pixels (see `display_doc`).
+pub(crate) fn preview_settling_needed(app: &PhotocraftApp) -> bool {
+    app.gradient.drag.is_some() || app.gradient.panel.is_some() || app.gradient.preset_stop.is_some()
+}
+
+/// Whether that settling still needs a wakeup: only while the pause hasn't elapsed yet.
+/// Past it, one settled frame renders pixels and nothing changes until the next move.
+pub(crate) fn preview_wake_needed(app: &PhotocraftApp) -> bool {
+    preview_settling_needed(app)
+        && crate::gpu_canvas::now_ms() - app.gradient.last_move_ms < 2.0 * PREVIEW_PAUSE_MS
+}
+
+/// Stamp a real pointer move (not a synthetic repeat): restarts the preview pause.
+fn stamp_move(app: &mut PhotocraftApp, p: [f32; 2]) {
+    if app.gradient.last_move_pos.is_some_and(|q| dist(q, p) * app.point_zoom().max(0.01) < 0.5) {
+        return;
+    }
+    app.gradient.last_move_ms = crate::gpu_canvas::now_ms();
+    app.gradient.last_move_pos = Some(p);
 }
 
 /// Whether the Gradient tool is in its live (Gradient Fill layer) mode.
@@ -223,6 +258,9 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
     match ev {
         ToolEvent::Down { x, y, .. } => {
             let p = [x as f32, y as f32];
+            // A new gesture restarts pause tracking even at the old position.
+            app.gradient.last_move_pos = None;
+            stamp_move(app, p);
             let active = active_gradient(app);
             let grab = active.as_ref().and_then(|(l, frame, _)| Widget::new(fill_of(l)?, *frame)?.hit(p, GRAB / zoom));
             app.gradient.drag = Some(match (grab, active) {
@@ -240,6 +278,7 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
 }
 
 fn drag_to(app: &mut PhotocraftApp, p: [f32; 2], mods: egui::Modifiers) {
+    stamp_move(app, p);
     let zoom = app.point_zoom().max(0.01);
     let active = active_gradient(app);
     let Some(drag) = app.gradient.drag.as_mut() else { return };
@@ -360,6 +399,22 @@ fn preview_key(revision: u64, what: &str) -> u64 {
     (h & (TAG - 1)) | TAG
 }
 
+/// Preview-cache key params with drag geometry rounded to whole pixels: sub-pixel
+/// mousemove events render identically, so they must hit the cache.
+fn quantized_key_params(p: &Value) -> Value {
+    let mut key_p = p.clone();
+    for k in ["from", "to"] {
+        if let Some(a) = key_p.get_mut(k).and_then(|v| v.as_array_mut()) {
+            for v in a.iter_mut().take(2) {
+                if let Some(n) = v.as_f64() {
+                    *v = json!(n.round());
+                }
+            }
+        }
+    }
+    key_p
+}
+
 /// The document to show while a gradient is drawn or edited (`canvas::display_doc`).
 pub fn display_doc(app: &mut PhotocraftApp, idx: usize) -> Option<(Arc<Document>, u64)> {
     if app.session.active_index() != Some(idx) {
@@ -379,11 +434,19 @@ pub fn display_doc(app: &mut PhotocraftApp, idx: usize) -> Option<(Arc<Document>
         app.gradient.preview = None;
         return None;
     };
-    let key = preview_key(revision, &format!("{}{cmd}{p}", layer.0));
+    // Sub-pixel drags render identically: quantize the geometry in the key so they hit
+    // the cache instead of recompositing the whole document every mousemove event.
+    let key = preview_key(revision, &format!("{}{cmd}{}", layer.0, quantized_key_params(&p)));
     if let Some((k, d)) = &app.gradient.preview
         && *k == key
     {
         return Some((d.clone(), key));
+    }
+    // Pixel previews render only after the pointer pauses (Krita shows just the
+    // guideline while dragging): a furious drag never queues full recomposites.
+    // Release always recomputes via finish, so nothing goes stale.
+    if crate::gpu_canvas::now_ms() - app.gradient.last_move_ms < PREVIEW_PAUSE_MS {
+        return None;
     }
     let mut shown = (*doc).clone();
     if cmd == cmds::CREATE {
@@ -399,6 +462,40 @@ pub fn display_doc(app: &mut PhotocraftApp, idx: usize) -> Option<(Arc<Document>
     let shown = Arc::new(shown);
     app.gradient.preview = Some((key, shown.clone()));
     Some((shown, key))
+}
+
+/// The gradient layer a preview drag changes: a new draw's sentinel (or the redrawn layer),
+/// an edit's layer, or a Properties-panel edit's layer (the preset strip stays full-path).
+fn preview_gradient_id(app: &PhotocraftApp) -> Option<LayerId> {
+    match &app.gradient.drag {
+        Some(Drag::Draw { redraw: Some(id), .. }) => Some(*id),
+        Some(Drag::Draw { .. }) => Some(PREVIEW_LAYER),
+        Some(Drag::Edit { layer, .. }) => Some(*layer),
+        None => app.gradient.panel.as_ref().map(|(id, _, _)| *id),
+    }
+}
+
+/// Split-preview frame for the canvas texture builder: exact cached base plus a
+/// reduced-space top, instead of a full recomposite per mousemove event. Returns `None`
+/// when the stack isn't splittable (caller renders everything).
+pub fn split_frame(app: &mut PhotocraftApp, doc: &Arc<Document>, w: u32, h: u32) -> Option<photocraft_compose::Buffer> {
+    let rev = app.session.active().map(|st| st.revision)?;
+    let gid = preview_gradient_id(app)?;
+    // The preview doc must actually contain it (a fresh Draw inserts PREVIEW_LAYER there).
+    doc.layer(gid)?;
+    let k = photocraft_compose::preview_split(doc, gid)?;
+    let key = (rev, k, w, h);
+    let base = match app.gradient.split_base.take() {
+        Some((bk, b)) if bk == key => Some(b),
+        _ => None,
+    };
+    match photocraft_compose::render_reduced_preview(doc, k, w, h, base) {
+        Some((full, base)) => {
+            app.gradient.split_base = Some((key, base));
+            Some(full)
+        }
+        None => None,
+    }
 }
 
 /// The fill and frame the widget shows: the one being drawn or edited, else the selected one.
@@ -963,6 +1060,7 @@ fn stop_strip(app: &mut PhotocraftApp, ui: &mut egui::Ui, sink: Sink, f: Fill) {
             }
         };
         if resp.dragged() {
+            app.gradient.last_move_ms = crate::gpu_canvas::now_ms();
             match sink {
                 Sink::Layer(id) => app.gradient.panel = Some((id, cmds::STOP, sink.params(edit))),
                 Sink::Preset => app.gradient.preset_stop = Some(edit),
@@ -1032,6 +1130,60 @@ fn stop_strip(app: &mut PhotocraftApp, ui: &mut egui::Ui, sink: Sink, f: Fill) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preview_key_quantizes_sub_pixel_drags() {
+        let a = quantized_key_params(&json!({"from": [10.1, 20.4], "to": [100.4, 90.49]}));
+        let b = quantized_key_params(&json!({"from": [10.4, 20.1], "to": [100.1, 90.1]}));
+        assert_eq!(a, b, "same-pixel drags share the key");
+        let c = quantized_key_params(&json!({"from": [11.0, 20.0], "to": [100.0, 90.0]}));
+        assert_ne!(a, c, "a moved pixel changes the key");
+        // Params without drag geometry pass through untouched.
+        let d = json!({"action": "move", "index": 1, "location": 0.333});
+        assert_eq!(quantized_key_params(&d), d);
+    }
+
+    #[test]
+    fn synthetic_repeats_do_not_reset_the_pause() {
+        use crate::canvas::{ToolEvent, tool_event};
+        let mut app = app_with_gradient("linear");
+        tool_event(&mut app, ToolEvent::Down { x: 10.0, y: 10.0, pressure: 1.0 }, mods());
+        tool_event(&mut app, ToolEvent::Move { x: 150.0, y: 80.0, pressure: 1.0 }, mods());
+        let t = app.gradient.last_move_ms;
+        // The canvas replays the latest position for held gestures with no raw moves:
+        // same-position repeats must not restart the pause.
+        tool_event(&mut app, ToolEvent::Move { x: 150.0, y: 80.0, pressure: 1.0 }, mods());
+        tool_event(&mut app, ToolEvent::Move { x: 150.0, y: 80.0, pressure: 1.0 }, mods());
+        assert_eq!(app.gradient.last_move_ms, t, "repeats keep the original stamp");
+        tool_event(&mut app, ToolEvent::Move { x: 160.0, y: 80.0, pressure: 1.0 }, mods());
+        assert!(app.gradient.last_move_ms >= t, "a real move restamps");
+    }
+
+    #[test]
+    fn split_frame_serves_drag_previews_and_falls_back() {        use crate::canvas::{ToolEvent, tool_event};
+        let mut app = app_with_gradient("linear");
+        // No drag: nothing to split.
+        let (doc, _) = crate::canvas::display_doc(&mut app, 0);
+        assert!(split_frame(&mut app, &doc, 160, 96).is_none());
+        // A draw drag inserts the preview layer: split serves it (settled clock simulates
+        // the pointer pause; fresh moves gate pixels off like mid-drag).
+        tool_event(&mut app, ToolEvent::Down { x: 10.0, y: 10.0, pressure: 1.0 }, mods());
+        tool_event(&mut app, ToolEvent::Move { x: 150.0, y: 80.0, pressure: 1.0 }, mods());
+        let (doc, _) = crate::canvas::display_doc(&mut app, 0);
+        assert!(split_frame(&mut app, &doc, 160, 96).is_none(), "mid-drag: guideline only");
+        app.gradient.last_move_ms = -100000.0; // settled long before the test process started
+        let (doc, _) = crate::canvas::display_doc(&mut app, 0);
+        let buf = split_frame(&mut app, &doc, 160, 96).expect("plain stack splits");
+        assert_eq!((buf.rect.width(), buf.rect.height()), (160, 96));
+        assert!(buf.px.iter().any(|p| p[3] > 0.01), "the preview paints");
+        // An adjustment layer above degrades to the full path, not to wrong pixels.
+        app.run("layer.newAdjustmentLayer.levels", json!({})).unwrap();
+        let (doc, _) = crate::canvas::display_doc(&mut app, 0);
+        assert!(split_frame(&mut app, &doc, 160, 96).is_none());
+        tool_event(&mut app, ToolEvent::Up { x: 150.0, y: 80.0 }, mods());
+        let (doc, _) = crate::canvas::display_doc(&mut app, 0);
+        assert!(split_frame(&mut app, &doc, 160, 96).is_none(), "no drag after release");
+    }
 
     fn app_with_gradient(style: &str) -> PhotocraftApp {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
@@ -1302,6 +1454,9 @@ mod tests {
         let mut app = app_with_gradient("radial");
         crate::canvas::tool_event(&mut app, ToolEvent::Down { x: 100.0, y: 60.0, pressure: 1.0 }, mods());
         crate::canvas::tool_event(&mut app, ToolEvent::Move { x: 140.0, y: 60.0, pressure: 1.0 }, mods());
+        assert!(display_doc(&mut app, 0).is_none(), "mid-drag: guideline only");
+        // A settled pointer (simulated pause) renders pixels.
+        app.gradient.last_move_ms = -100000.0; // settled long before the test process started
         let (doc, key) = display_doc(&mut app, 0).expect("a preview while drawing");
         assert!(key & TAG != 0);
         assert!(doc.layer(PREVIEW_LAYER).is_some(), "the new layer previews");

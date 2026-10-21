@@ -1588,6 +1588,18 @@ pub fn ensure_texture(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usize, 
     let seen = app.canvases.get(&cache_key(id, output)).map(|c| (c.tex_revision, c.tex_preview_key));
     let damage = seen.and_then(|seen| damage_since(app, idx, seen, (revision, preview_key), display_key, last_damage));
     let preview_key = preview_key ^ display_key;
+    let longest = doc.size.width.max(doc.size.height);
+    let factor = longest.div_ceil(texture_side(ctx)).max(1);
+    let (w, h) = ((doc.size.width / factor).max(1), (doc.size.height / factor).max(1));
+    // Gradient live-drag split preview (exact cached base, reduced top): only when this
+    // frame recomposites anyway (no damage-partial path), so an ineligible stack costs one
+    // cheap key check.
+    let split = (damage.is_none()
+        && app.canvases.get(&cache_key(id, output)).is_none_or(|c| {
+            c.tex_revision != revision || c.texture.is_none() || c.tex_preview_key != preview_key
+        }))
+    .then(|| crate::gradient_ui::split_frame(app, &doc, w, h))
+    .flatten();
     let cache = app.canvases.entry(cache_key(id, output)).or_insert(CanvasCache {
         revision: 0,
         texture: None,
@@ -1600,9 +1612,6 @@ pub fn ensure_texture(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usize, 
     });
     if cache.tex_revision != revision || cache.texture.is_none() || cache.tex_preview_key != preview_key {
         let t0 = crate::gpu_canvas::now_ms();
-        let longest = doc.size.width.max(doc.size.height);
-        let factor = longest.div_ceil(texture_side(ctx)).max(1);
-        let (w, h) = ((doc.size.width / factor).max(1), (doc.size.height / factor).max(1));
         let current = cache.texture.as_mut().filter(|t| t.size() == [w as usize, h as usize]);
         if let (Some(d), Some(t)) = (damage, current) {
             // Only what the edit or stroke touched: the reduced texture's pixels over it, with the
@@ -1616,8 +1625,9 @@ pub fn ensure_texture(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usize, 
                 app.perf.record("rect", px, t1 - t0, crate::gpu_canvas::now_ms() - t1);
             }
         } else {
-            // Reduced in bands straight from the compositor: no full-size composite in memory.
-            let full = photocraft_compose::render_reduced(&doc, w, h);
+            // Gradient live-drag split preview: exact cached base plus a reduced-space top,
+            // instead of a full recomposite per mousemove event (falls back below).
+            let full = split.unwrap_or_else(|| photocraft_compose::render_reduced(&doc, w, h));
             let t1 = crate::gpu_canvas::now_ms();
             let (img, scale) = (display_image(display.as_deref(), &full), 1.0 / factor as f32);
             match cache.texture.as_mut() {
@@ -3828,6 +3838,12 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             // A held pen keeps the clock running for airbrush build-up and smoothing catch-up.
             if app.drag.is_some() && stroke_wants_time(app) {
                 ctx.request_repaint_after(std::time::Duration::from_millis(HOLD_REPEAT_MS as u64));
+            }
+            // A settling gradient preview renders pixels once the pointer pauses.
+            if crate::gradient_ui::preview_wake_needed(app) {
+                ctx.request_repaint_after(std::time::Duration::from_millis(
+                    crate::gradient_ui::PREVIEW_PAUSE_MS as u64,
+                ));
             }
             app.defer_live_stroke = false;
             // One live-stroke update for the whole frame, not one per recovered sample.

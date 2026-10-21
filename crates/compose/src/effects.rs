@@ -1035,33 +1035,63 @@ pub fn gradient_units(angle: f32, w: f32, h: f32) -> (f32, f32) {
 }
 
 /// Gradient parameter `t` in `0..=1` for pixel centre `(x, y)` inside `bounds`.
+/// Loop invariants hoisted for the fill hot loop ([`gradient_t_prepare`]).
 #[allow(clippy::too_many_arguments)]
 pub fn gradient_t(style: GradientStyle, angle: f32, scale: f32, reverse: bool, offset: (f32, f32), bounds: Rect, x: f32, y: f32) -> f32 {
+    gradient_t_eval(&gradient_t_prepare(style, angle, scale, reverse, offset, bounds), x, y)
+}
+
+/// Per-bounds half of [`gradient_t`]: everything the pixel loop does not vary.
+#[allow(clippy::too_many_arguments)]
+pub fn gradient_t_prepare(style: GradientStyle, angle: f32, scale: f32, reverse: bool, offset: (f32, f32), bounds: Rect) -> PreparedGradientT {
     let w = bounds.width().max(1) as f32;
     let h = bounds.height().max(1) as f32;
     let cx = bounds.x0 as f32 + w / 2.0 + offset.0 * w;
     let cy = bounds.y0 as f32 + h / 2.0 + offset.1 * h;
     let (s, c) = angle.to_radians().sin_cos();
-    let (dx, dy) = (x - cx, y - cy);
-    // Distance along the gradient direction (y axis points down).
-    let along = dx * c - dy * s;
-    let across = dx * s + dy * c;
-    let (chord, len) = gradient_units(angle, w, h);
+    // `gradient_units` inlined on the same trig: the bounds' extent along the angle.
+    let len = ((c * w).powi(2) + (s * h).powi(2)).sqrt().max(1.0);
+    let chord = (w / c.abs().max(1e-6)).min(h / s.abs().max(1e-6)).max(1.0);
     let (chord, len) = (chord * scale.max(1e-3), len * scale.max(1e-3));
     // Linear / Reflected sample the pixel's top-left corner, half a pixel before its centre
     // (with the whole-pixel end points of `fill_layout`: layer_effects' overlay 5.8 → 1.8/255,
     // shape-fx2 2.8 → 1.1/255, gradient-fill.psd 1.9 → 0.5/255).
     let corner = 0.5 * (c - s);
-    let mut t = match style {
-        GradientStyle::Linear => (along - corner) / chord + 0.5,
-        GradientStyle::Reflected => ((along - corner) / (chord / 2.0)).abs(),
-        GradientStyle::Radial => (dx * dx + dy * dy).sqrt() / (len / 2.0),
-        GradientStyle::Diamond => (along.abs() + across.abs()) / (len / 2.0),
+    PreparedGradientT { style, angle, reverse, cx, cy, s, c, chord, len, corner }
+}
+
+/// Loop-invariant inputs of [`gradient_t`], from [`gradient_t_prepare`].
+#[derive(Clone, Copy, Debug)]
+pub struct PreparedGradientT {
+    style: GradientStyle,
+    angle: f32,
+    reverse: bool,
+    cx: f32,
+    cy: f32,
+    s: f32,
+    c: f32,
+    chord: f32,
+    len: f32,
+    corner: f32,
+}
+
+/// Per-pixel half of [`gradient_t`]: same operations in the same order, so every caller
+/// (fills, vectors, editor previews) keeps bit-identical values.
+pub fn gradient_t_eval(p: &PreparedGradientT, x: f32, y: f32) -> f32 {
+    let (dx, dy) = (x - p.cx, y - p.cy);
+    // Distance along the gradient direction (y axis points down).
+    let along = dx * p.c - dy * p.s;
+    let across = dx * p.s + dy * p.c;
+    let mut t = match p.style {
+        GradientStyle::Linear => (along - p.corner) / p.chord + 0.5,
+        GradientStyle::Reflected => ((along - p.corner) / (p.chord / 2.0)).abs(),
+        GradientStyle::Radial => (dx * dx + dy * dy).sqrt() / (p.len / 2.0),
+        GradientStyle::Diamond => (along.abs() + across.abs()) / (p.len / 2.0),
         // Clockwise sweep starting at the gradient angle.
-        GradientStyle::Angle => ((angle.to_radians() - (-dy).atan2(dx)) / std::f32::consts::TAU).rem_euclid(1.0),
+        GradientStyle::Angle => ((p.angle.to_radians() - (-dy).atan2(dx)) / std::f32::consts::TAU).rem_euclid(1.0),
     };
     t = t.clamp(0.0, 1.0);
-    if reverse { 1.0 - t } else { t }
+    if p.reverse { 1.0 - t } else { t }
 }
 
 /// Samples colour and opacity stops at `t`.

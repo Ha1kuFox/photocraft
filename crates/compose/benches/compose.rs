@@ -53,8 +53,7 @@ fn benches(c: &mut Criterion) {
     let doc = five_layer_doc(6016);
     let mut g = c.benchmark_group("compose");
     g.sample_size(10);
-    g.bench_function("flatten_6016_5_layers", |b| b.iter(|| photocraft_compose::flatten(&doc)));
-    let masks = mask_heavy_doc();
+    g.bench_function("flatten_6016_5_layers", |b| b.iter(|| photocraft_compose::flatten(&doc)));    let masks = mask_heavy_doc();
     g.bench_function("flatten_2048_20_masked_layers", |b| b.iter(|| photocraft_compose::flatten(&masks)));
     let stroke = photocraft_paint::Stroke {
         brush: photocraft_paint::BrushSettings { size: 60.0, hardness: 0.5, ..Default::default() },
@@ -69,7 +68,76 @@ fn benches(c: &mut Criterion) {
             photocraft_paint::apply_stroke(&mut s, &stroke, Some(&sel), false)
         })
     });
+    gradient_drag_frame(&mut g);
     g.finish();
+}
+
+/// One live-gradient-drag frame (`gradient_ui::display_doc` + canvas composite): a 24 MP photo
+/// document with a full-canvas gradient fill layer on top, composited at display size with a
+/// different gradient angle every iteration (a drag never repeats a frame).
+fn photo_doc_24mp() -> Document {
+    let (w, h) = (6000u32, 4000u32);
+    let mut doc = Document::with_background("photo", Size::new(w, h), ColorMode::Rgb, SampleType::U8, Color::WHITE);
+    doc.layers.push(Layer::new("photo", LayerContent::Raster(filled(6000, 9))));
+    doc
+}
+
+fn gradient_fill(angle: f64) -> photocraft_doc::Fill {
+    use photocraft_doc::GradientStyle;
+    let stops = vec![(0.0, Color::rgb(0.08, 0.16, 0.78)), (0.5, Color::rgb(0.78, 0.16, 0.47)), (1.0, Color::rgb(0.94, 0.86, 0.31))];
+    photocraft_doc::Fill::gradient(stops, angle as f32, 100.0, GradientStyle::Linear, false)
+}
+
+fn gradient_drag_frame(g: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>) {
+    let doc = photo_doc_24mp();
+    let mut angle = 0.0;
+    g.bench_function("gradient_drag_frame_24mp_display", |b| {
+        b.iter(|| {
+            angle += 7.0;
+            let mut frame = doc.clone();
+            frame.layers.push(Layer::new("gradient", LayerContent::Fill(gradient_fill(angle))));
+            photocraft_compose::render_reduced(&frame, 1600, 1067)
+        })
+    });
+    // Same document without the gradient layer: the composite baseline the gradient adds to.
+    g.bench_function("gradient_drag_baseline_24mp_display", |b| {
+        b.iter(|| photocraft_compose::render_reduced(&doc, 1600, 1067))
+    });
+    // Split composite: the static part once (cached across iterations), the gradient group
+    // fresh — the live-drag path (`render_reduced_split`).
+    g.bench_function("gradient_drag_split_24mp_display", |b| {
+        let mut frame0 = doc.clone();
+        frame0.layers.push(Layer::new("gradient", LayerContent::Fill(gradient_fill(0.0))));
+        let gid = frame0.layers.last().map(|l| l.id).unwrap();
+        let k = photocraft_compose::preview_split(&frame0, gid).unwrap();
+        let mut base: Option<photocraft_compose::Buffer> = None;
+        let mut angle = 0.0;
+        b.iter(|| {
+            angle += 7.0;
+            let mut frame = doc.clone();
+            frame.layers.push(Layer::new("gradient", LayerContent::Fill(gradient_fill(angle))));
+            let (full, b) = photocraft_compose::render_reduced_split(&frame, k, 1600, 1067, base.take());
+            base = Some(b);
+            full
+        })
+    });
+    // Live-drag preview path: exact cached base, reduced-space top (`render_reduced_preview`).
+    g.bench_function("gradient_drag_preview_24mp_display", |b| {
+        let mut frame0 = doc.clone();
+        frame0.layers.push(Layer::new("gradient", LayerContent::Fill(gradient_fill(0.0))));
+        let gid = frame0.layers.last().map(|l| l.id).unwrap();
+        let k = photocraft_compose::preview_split(&frame0, gid).unwrap();
+        let mut base: Option<photocraft_compose::Buffer> = None;
+        let mut angle = 0.0;
+        b.iter(|| {
+            angle += 7.0;
+            let mut frame = doc.clone();
+            frame.layers.push(Layer::new("gradient", LayerContent::Fill(gradient_fill(angle))));
+            let (full, b) = photocraft_compose::render_reduced_preview(&frame, k, 1600, 1067, base.take()).unwrap();
+            base = Some(b);
+            full
+        })
+    });
 }
 
 criterion_group!(compose_benches, benches);

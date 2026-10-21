@@ -160,10 +160,12 @@ fn render_ramp<const N: usize>(f: &Fill, rect: Rect, frame: Rect, ramp: Option<R
     }
     // Linear and Reflected end points on whole pixels, as Photoshop (crate::fill_layout).
     let (angle, scale, offset) = &crate::fill_layout::gradient_layout(*style, *angle, *scale, *offset, frame);
+    // The per-pixel trigonometry and bounds extents hoisted out of the hot loop.
+    let prep = crate::effects::gradient_t_prepare(*style, *angle, *scale, *reverse, *offset, frame);
     let row = |y: i32, out: &mut [[f32; N]]| {
         for (i, p) in out.iter_mut().enumerate() {
             let x = rect.x0 + i as i32;
-            let t = crate::effects::gradient_t(*style, *angle, *scale, *reverse, *offset, frame, x as f32 + 0.5, y as f32 + 0.5);
+            let t = crate::effects::gradient_t_eval(&prep, x as f32 + 0.5, y as f32 + 0.5);
             *p = ramp.sample(t);
             if *dith {
                 dither_channels_to(p.get_mut(..N.saturating_sub(1)).unwrap_or_default(), x, y, quantum);

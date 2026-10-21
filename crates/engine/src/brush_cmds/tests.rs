@@ -1159,28 +1159,3 @@ fn correct_stroke_fails_gracefully() {
     assert!(surface(&s).rgba(20, 20)[3] > 0.0);
 }
 
-#[test]
-fn dbg_ui_sequence_with_retarget_back() {
-    let mut s = session(200, 100);
-    let mut p = correct_brush_params();
-    p["points"] = json!([wobbly_raw()[0]]);
-    let mut live = LiveStroke::begin(&s, &p).unwrap();
-    let rest: Vec<StrokePoint> = wobbly_raw()[1..].iter().map(|v| StrokePoint::new(v[0].as_f64().unwrap(), v[1].as_f64().unwrap(), 1.0)).collect();
-    live.push(&rest).unwrap();
-    let seed = live.seed;
-    // UI: retarget back to raw (same points here), then the corrected flow.
-    let raw: Vec<StrokePoint> = live.points.clone();
-    live.retarget(&raw).unwrap();
-    s.offer_live_stroke(live).unwrap();
-    let mut cp = correct_brush_params();
-    cp["points"] = json!(wobbly_raw());
-    cp["correctedPoints"] = json!(fitted_line());
-    cp["strokeCommand"] = json!("paint.stroke");
-    cp["seed"] = json!(seed);
-    s.execute("paint.correctStroke", cp).unwrap();
-    eprintln!("after: a4050={} a1054={}", surface(&s).rgba(40, 50)[3], surface(&s).rgba(10, 54)[3]);
-    s.undo();
-    eprintln!("undo1: a4050={} a1054={}", surface(&s).rgba(40, 50)[3], surface(&s).rgba(10, 54)[3]);
-    s.undo();
-    eprintln!("undo2: a4050={} a1054={}", surface(&s).rgba(40, 50)[3], surface(&s).rgba(10, 54)[3]);
-}

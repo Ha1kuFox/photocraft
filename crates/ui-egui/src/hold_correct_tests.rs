@@ -55,7 +55,7 @@ fn hold(app: &mut PhotocraftApp, clock: &mut f64, at: [f64; 2], ms: f64) {
 }
 
 #[test]
-fn dbg_plain_undo() {
+fn plain_stroke_undo_clears_pixels() {
     let mut app = app();
     let mut clock = 1000.0;
     app.stylus.clock_ms = clock;
@@ -66,29 +66,9 @@ fn dbg_plain_undo() {
         tool_event(&mut app, ToolEvent::Move { x: 10.0 + i as f64 * 7.0, y: 50.0, pressure: 1.0 }, Modifiers::NONE);
     }
     tool_event(&mut app, ToolEvent::Up { x: 80.0, y: 50.0 }, Modifiers::NONE);
-    eprintln!("plain steps={} entries={:?} a={}", steps(&app), app.session.active().unwrap().history.entries(), layer_alpha(&app, 40, 50));
-    let u = app.session.undo();
-    eprintln!("plain undo={u} a={}", layer_alpha(&app, 40, 50));
-}
-
-#[test]
-fn dbg_undo_flow() {
-    let mut app = app();
-    let mut clock = 1000.0;
-    app.stylus.clock_ms = clock;
-    draw_wobbly(&mut app, &mut clock, 20.0);
-    hold(&mut app, &mut clock, [150.0, 53.0], 150.0);
-    hold(&mut app, &mut clock, [150.0, 53.0], 150.0);
-    eprintln!("correcting={}", app.drag.as_ref().is_some_and(|d| d.correcting.is_some()));
-    clock += 20.0;
-    app.stylus.clock_ms = clock;
-    tool_event(&mut app, ToolEvent::Move { x: 150.0, y: 90.0, pressure: 1.0 }, Modifiers::NONE);
-    tool_event(&mut app, ToolEvent::Up { x: 150.0, y: 90.0 }, Modifiers::NONE);
-    eprintln!("steps={} entries={:?} a8070={} a8053={}", steps(&app), app.session.active().unwrap().history.entries(), layer_alpha(&app, 80, 70), layer_alpha(&app, 80, 53));
-    let u1 = app.session.undo();
-    eprintln!("undo1={u1} steps={} a8070={} a8053={}", steps(&app), layer_alpha(&app, 80, 70), layer_alpha(&app, 80, 53));
-    let u2 = app.session.undo();
-    eprintln!("undo2={u2} steps={} a8070={} a8053={}", steps(&app), layer_alpha(&app, 80, 70), layer_alpha(&app, 80, 53));
+    assert!(layer_alpha(&app, 40, 50) > 0.0, "the stroke paints");
+    assert!(app.session.undo());
+    assert_eq!(layer_alpha(&app, 40, 50), 0.0, "undo clears it");
 }
 
 #[test]
