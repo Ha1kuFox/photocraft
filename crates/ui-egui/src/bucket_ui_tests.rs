@@ -1,7 +1,7 @@
 //! Paint Bucket options: sampling mode, reference layer, Expand and Close gaps.
 
-use egui_kittest::kittest::Queryable;
 use egui_kittest::kittest::NodeT;
+use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 use crate::PhotocraftApp;

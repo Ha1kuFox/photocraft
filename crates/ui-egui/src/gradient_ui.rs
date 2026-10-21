@@ -99,8 +99,7 @@ pub(crate) fn preview_settling_needed(app: &PhotocraftApp) -> bool {
 /// Whether that settling still needs a wakeup: only while the pause hasn't elapsed yet.
 /// Past it, one settled frame renders pixels and nothing changes until the next move.
 pub(crate) fn preview_wake_needed(app: &PhotocraftApp) -> bool {
-    preview_settling_needed(app)
-        && crate::gpu_canvas::now_ms() - app.gradient.last_move_ms < 2.0 * PREVIEW_PAUSE_MS
+    preview_settling_needed(app) && crate::gpu_canvas::now_ms() - app.gradient.last_move_ms < 2.0 * PREVIEW_PAUSE_MS
 }
 
 /// Stamp a real pointer move (not a synthetic repeat): restarts the preview pause.
@@ -252,6 +251,11 @@ impl Widget {
 pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) -> bool {
     if !live_mode(app) {
         app.gradient.drag = None;
+        return false;
+    }
+    // ⌘ is the Move tool (`hold_keys::cmd_moves`): a press with it held drags a guide or the layer
+    // (#6288). A drag already under way keeps its events.
+    if app.gradient.drag.is_none() && crate::canvas::event_tool(app, mods) != Tool::Gradient {
         return false;
     }
     let zoom = app.point_zoom().max(0.01);
@@ -1160,7 +1164,8 @@ mod tests {
     }
 
     #[test]
-    fn split_frame_serves_drag_previews_and_falls_back() {        use crate::canvas::{ToolEvent, tool_event};
+    fn split_frame_serves_drag_previews_and_falls_back() {
+        use crate::canvas::{ToolEvent, tool_event};
         let mut app = app_with_gradient("linear");
         // No drag: nothing to split.
         let (doc, _) = crate::canvas::display_doc(&mut app, 0);

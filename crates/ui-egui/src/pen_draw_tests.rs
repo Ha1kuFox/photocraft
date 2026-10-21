@@ -219,3 +219,59 @@ fn delete_with_the_pen_deletes_the_finished_work_path_not_the_pixels() {
     h.run_steps(2);
     assert!(work(&h), "another tool's Delete is Edit › Clear, not Delete Path");
 }
+
+fn space(h: &mut Harness<'static, PhotocraftApp>, down: bool) {
+    h.event(egui::Event::Key { key: Key::Space, physical_key: None, pressed: down, repeat: false, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+}
+
+/// Did the last frame paint the Pen's path in progress: an accent polyline starting at `at`, its
+/// first anchor on screen (`vector_ui::draw_overlay`)?
+fn pen_path_painted(h: &Harness<'static, PhotocraftApp>, at: Pos2) -> bool {
+    let accent = crate::theme::Tokens::get(&h.ctx).accent;
+    h.output().shapes.iter().any(|c| match &c.shape {
+        egui::Shape::Path(p) => {
+            p.stroke.width == 1.5
+                && matches!(p.stroke.color, egui::epaint::ColorMode::Solid(col) if col == accent)
+                && p.points.len() >= 2
+                && p.points[0].distance(at) < 1.0
+        }
+        _ => false,
+    })
+}
+
+/// #6592: holding Space to pan with the Hand keeps the Pen's path in progress, and shows it, as in
+/// Photoshop.
+#[test]
+fn space_pan_keeps_the_pen_path_in_progress_visible() {
+    let mut h = harness();
+    click(&mut h, [20.0, 20.0]);
+    click(&mut h, [100.0, 20.0]);
+    assert_eq!(h.state().ui.pen.as_ref().map(|p| p.knots.len()), Some(2));
+    let p = screen(&h, [150.0, 100.0]);
+    h.event(egui::Event::PointerMoved(p));
+    h.run_steps(1);
+    assert!(pen_path_painted(&h, screen(&h, [20.0, 20.0])), "drawn before Space");
+    space(&mut h, true);
+    assert!(pen_path_painted(&h, screen(&h, [20.0, 20.0])), "drawn with Space held, before the drag");
+    let c0 = h.state().ui.views[0].center;
+    button(&mut h, p, true, Modifiers::NONE);
+    for i in 1..=5 {
+        // A pan frame paints the image and its overlays with the view it started with.
+        let first = screen(&h, [20.0, 20.0]);
+        h.event(egui::Event::PointerMoved(p + vec2(10.0 * i as f32, 0.0)));
+        h.run_steps(1);
+        let pen = h.state().ui.pen.as_ref().map(|p| p.knots.len());
+        let painted = pen_path_painted(&h, first);
+        assert_eq!(pen, Some(2), "the path in progress is kept while panning (step {i})");
+        assert!(painted, "the path in progress is drawn while panning (step {i})");
+    }
+    button(&mut h, p + vec2(50.0, 0.0), false, Modifiers::NONE);
+    space(&mut h, false);
+    h.run_steps(1);
+    let c1 = h.state().ui.views[0].center;
+    assert!((c1[0] - (c0[0] - 50.0)).abs() < 0.5, "Space-drag panned: {c0:?} -> {c1:?}");
+    assert_eq!(h.state().ui.tool, Tool::Pen);
+    assert_eq!(h.state().ui.pen.as_ref().map(|p| p.knots.len()), Some(2), "the path in progress survives the pan");
+    assert!(pen_path_painted(&h, screen(&h, [20.0, 20.0])), "drawn after the pan");
+}

@@ -24,7 +24,7 @@
 
 use photocraft_color::{BlendMode, ColorMode, PixelFormat, SampleType};
 use photocraft_doc::{LayerMask, SmartFilter};
-use photocraft_geom::warp::{Warp, WarpStyle};
+use photocraft_geom::warp::{BezierMesh, Warp, WarpStyle};
 use photocraft_geom::{Affine, Rect as GeomRect};
 use photocraft_psd::Compression;
 use photocraft_psd::Rect as PsdRect;
@@ -672,6 +672,16 @@ fn set(d: &mut Descriptor, key: &str, v: Value) {
     }
 }
 
+/// Replaces item `key` in place, or inserts it before item `before` (appends it without one).
+fn set_before(d: &mut Descriptor, key: &str, v: Value, before: &str) {
+    if let Some(e) = d.items.iter_mut().find(|(k, _)| k.is(key)) {
+        e.1 = v;
+        return;
+    }
+    let at = d.items.iter().position(|(k, _)| k.is(before)).unwrap_or(d.items.len());
+    d.items.insert(at, (Id::new(key), v));
+}
+
 /// Everything needed to write the placed-layer blocks of a smart object.
 #[derive(Clone, Debug)]
 pub struct PlacedSpec<'a> {
@@ -691,16 +701,17 @@ pub struct PlacedSpec<'a> {
 }
 
 /// Where the frame corners land (top-left, top-right, bottom-right, bottom-left), as x, y pairs.
-/// The frame is [`crate::blocks::placed_frame`] for an affine placement (the inverse of
-/// `parse_smart`), the source rect for a projective one (as `parse_smart_perspective` reads it).
-fn quad_points(s: &PlacedSpec<'_>) -> [f64; 8] {
+/// The frame is [`crate::blocks::placed_frame`] of `warp`, the warp the block stores, for an
+/// affine placement (the inverse of `parse_smart`), the source rect for a projective one (as
+/// `parse_smart_perspective` reads it).
+fn quad_points(s: &PlacedSpec<'_>, warp: Option<&Warp>) -> [f64; 8] {
     let (w, h) = s.size;
     let [a, b, c, d, e, f] = s.transform.m;
     let map = |x: f64, y: f64| match &s.perspective {
         Some(p) => photocraft_algo::transform::Homography(*p).apply(x, y),
         None => (a * x + c * y + e, b * x + d * y + f),
     };
-    let [x0, y0, x1, y1] = if s.perspective.is_some() { [0.0, 0.0, w, h] } else { crate::blocks::placed_frame(s.warp, w, h) };
+    let [x0, y0, x1, y1] = if s.perspective.is_some() { [0.0, 0.0, w, h] } else { crate::blocks::placed_frame(warp, w, h) };
     let mut out = [0.0; 8];
     for (i, (x, y)) in [(x0, y0), (x1, y0), (x1, y1), (x0, y1)].into_iter().enumerate() {
         (out[2 * i], out[2 * i + 1]) = map(x, y);
@@ -709,15 +720,15 @@ fn quad_points(s: &PlacedSpec<'_>) -> [f64; 8] {
 }
 
 /// The transform quad: the source corners (top-left, top-right, bottom-right, bottom-left).
-fn quad(s: &PlacedSpec<'_>) -> Value {
-    Value::List(quad_points(s).into_iter().map(Value::Double).collect())
+fn quad(s: &PlacedSpec<'_>, warp: Option<&Warp>) -> Value {
+    Value::List(quad_points(s, warp).into_iter().map(Value::Double).collect())
 }
 
 /// Has the placement moved from the quad a template descriptor stores (`Trnf`)?
-fn quad_moved(template: &Descriptor, s: &PlacedSpec<'_>) -> bool {
+fn quad_moved(template: &Descriptor, s: &PlacedSpec<'_>, warp: Option<&Warp>) -> bool {
     let Some(Value::List(pts)) = template.get("Trnf") else { return true };
     let old: Vec<f64> = pts.iter().filter_map(|v| crate::blocks::num(Some(v))).collect();
-    let new = quad_points(s);
+    let new = quad_points(s, warp);
     old.len() != 8 || old.iter().zip(new).any(|(a, b)| (a - b).abs() > 1e-6 * (1.0 + a.abs()))
 }
 
@@ -725,27 +736,33 @@ fn enumv(t: &str, v: &str) -> Value {
     Value::Enumerated { type_id: Id::new(t), value: Id::new(v) }
 }
 
-/// The `warp` descriptor (also the `PlLd` warp). Multi-patch meshes have no 1 × 1 envelope and
-/// are written as no warp, with a message.
-fn warp_desc(w: Option<&Warp>, size: (f64, f64), warnings: &mut Vec<String>) -> Value {
-    let none = Warp::none([0.0, 0.0, size.0, size.1]);
-    let mut w = w.unwrap_or(&none).clone();
-    let mesh = match (&w.style, &w.mesh) {
-        (WarpStyle::Custom, Some(m)) if m.points.len() == 16 => Some(m.clone()),
-        (WarpStyle::Custom, _) => {
-            warnings.push("a custom warp with more than one patch was written to PSD without its warp".into());
-            w = none.clone();
-            None
-        }
-        _ => None,
-    };
+/// The mesh of a split warp: a custom warp of more than one patch, which `SoLd` stores as
+/// `quiltWarp` and `PlLd` can't store.
+fn split_mesh(w: Option<&Warp>) -> Option<&BezierMesh> {
+    w.filter(|w| w.style == WarpStyle::Custom).and_then(|w| w.mesh.as_ref()).filter(|m| m.points.len() != 16 && m.is_valid())
+}
+
+/// The warp `SoLd` stores: none, with a message, for a split warp of more patches along a side
+/// than a `quiltWarp` is read with, so its corners are framed by the source rect as on reopen.
+fn sold_warp<'a>(w: Option<&'a Warp>, warnings: &mut Vec<String>) -> Option<&'a Warp> {
+    let too_big = split_mesh(w).is_some_and(|m| m.us.len().max(m.vs.len()) > crate::blocks::QUILT_MAX_PATCHES + 1);
+    if too_big {
+        warnings.push(format!("a split warp of more than {} patches along a side was written to PSD without its warp", crate::blocks::QUILT_MAX_PATCHES));
+        return None;
+    }
+    w
+}
+
+/// Style, bend, distortions, axis, bounds and order: the keys a `warp` and a `quiltWarp`
+/// descriptor share, in Photoshop's order.
+fn warp_head(class: &str, w: &Warp) -> Descriptor {
     let [x0, y0, x1, y1] = w.bounds;
     let bounds = Descriptor::new("classFloatRect")
         .with("Top ", Value::Double(y0))
         .with("Left", Value::Double(x0))
         .with("Btom", Value::Double(y1))
         .with("Rght", Value::Double(x1));
-    let mut d = Descriptor::new("warp")
+    Descriptor::new(class)
         .with("warpStyle", enumv("warpStyle", w.style.psd_name()))
         .with("warpValue", Value::Double(w.bend))
         .with("warpPerspective", Value::Double(w.h_distort))
@@ -753,17 +770,72 @@ fn warp_desc(w: Option<&Warp>, size: (f64, f64), warnings: &mut Vec<String>) -> 
         .with("warpRotate", enumv("Ornt", if w.vertical { "Vrtc" } else { "Hrzn" }))
         .with("bounds", Value::Descriptor(bounds))
         .with("uOrder", Value::Integer(4))
-        .with("vOrder", Value::Integer(4));
+        .with("vOrder", Value::Integer(4))
+}
+
+/// The control points of a custom warp: an object array of their x and y.
+fn mesh_points(m: &BezierMesh) -> Value {
+    let body = Descriptor::new("rationalPoint")
+        .with("Hrzn", Value::UnitFloats { unit: *b"#Pxl", values: m.points.iter().map(|p| p[0]).collect() })
+        .with("Vrtc", Value::UnitFloats { unit: *b"#Pxl", values: m.points.iter().map(|p| p[1]).collect() });
+    Value::ObjectArray(ObjectArray { prefix: m.points.len() as u32, body })
+}
+
+/// The `warp` descriptor (also the `PlLd` warp). A split warp is written as no warp: `SoLd`
+/// keeps it in `quiltWarp` ([`quilt_desc`]), next to this `warpNone`, as Photoshop does. A
+/// custom warp without a usable mesh is written as no warp, with a message.
+fn warp_desc(w: Option<&Warp>, size: (f64, f64), warnings: &mut Vec<String>) -> Value {
+    let none = Warp::none([0.0, 0.0, size.0, size.1]);
+    let mut w = w.unwrap_or(&none).clone();
+    let mesh = match (&w.style, &w.mesh) {
+        (WarpStyle::Custom, Some(m)) if m.points.len() == 16 => Some(m.clone()),
+        (WarpStyle::Custom, Some(m)) if m.is_valid() => {
+            w = none.clone();
+            None
+        }
+        (WarpStyle::Custom, _) => {
+            warnings.push("a custom warp without a valid mesh was written to PSD without its warp".into());
+            w = none.clone();
+            None
+        }
+        _ => None,
+    };
+    let mut d = warp_head("warp", &w);
     if let Some(m) = mesh {
-        let body = Descriptor::new("rationalPoint")
-            .with("Hrzn", Value::UnitFloats { unit: *b"#Pxl", values: m.points.iter().map(|p| p[0]).collect() })
-            .with("Vrtc", Value::UnitFloats { unit: *b"#Pxl", values: m.points.iter().map(|p| p[1]).collect() });
-        d = d.with(
-            "customEnvelopeWarp",
-            Value::Descriptor(Descriptor::new("customEnvelopeWarp").with("meshPoints", Value::ObjectArray(ObjectArray { prefix: 16, body }))),
-        );
+        d = d.with("customEnvelopeWarp", Value::Descriptor(Descriptor::new("customEnvelopeWarp").with("meshPoints", mesh_points(&m))));
     }
     Value::Descriptor(d)
+}
+
+/// The `quiltWarp` descriptor of a split warp, in Photoshop's layout: `deformNumCols` ×
+/// `deformNumRows` control points, and the patch boundaries (`quiltSliceX` / `quiltSliceY`) at
+/// the knots across the warp's box. The imported `quiltWarp` (`old`) gives its own slices where
+/// they still bound the mesh's patches, so their units and padding stay Photoshop's.
+fn quilt_desc(w: &Warp, mesh: &BezierMesh, old: Option<&Descriptor>) -> Value {
+    let old_env = old.and_then(|q| get_desc(q, "customEnvelopeWarp"));
+    let [x0, y0, x1, y1] = w.bounds;
+    let slices = |key: &str, knots: &[f64], lo: f64, hi: f64| {
+        if let Some(env) = old_env
+            && crate::blocks::quilt_knots(env, key, knots.len() - 1).as_deref() == Some(knots)
+            && let Some(v) = env.get(key)
+        {
+            return v.clone();
+        }
+        let (lo, hi) = if (hi - lo).is_finite() && hi > lo { (lo, hi) } else { (0.0, 1.0) };
+        let values: Vec<f64> = knots.iter().map(|u| lo + u * (hi - lo)).collect();
+        let prefix = values.len() as u32;
+        Value::ObjectArray(ObjectArray { prefix, body: Descriptor::new("UntF").with(key, Value::UnitFloats { unit: *b"#Pxl", values }) })
+    };
+    let envelope = Descriptor::new("customEnvelopeWarp")
+        .with("quiltSliceX", slices("quiltSliceX", &mesh.us, x0, x1))
+        .with("quiltSliceY", slices("quiltSliceY", &mesh.vs, y0, y1))
+        .with("meshPoints", mesh_points(mesh));
+    Value::Descriptor(
+        warp_head("quiltWarp", w)
+            .with("deformNumRows", Value::Integer(mesh.ny() as i32))
+            .with("deformNumCols", Value::Integer(mesh.nx() as i32))
+            .with("customEnvelopeWarp", Value::Descriptor(envelope)),
+    )
 }
 
 fn ratio(n: i32, d: i32) -> Value {
@@ -779,20 +851,36 @@ fn pad4(mut v: Vec<u8>) -> Vec<u8> {
 
 /// `SoLd` block data. With `template` (the imported descriptor) every key it has is kept and only
 /// the placed id (for a duplicate), transform (when it moved), warp and filter stack are rewritten;
-/// otherwise a fresh descriptor in Photoshop's key order.
+/// otherwise a fresh descriptor in Photoshop's key order. A split warp goes in `quiltWarp`.
 pub fn sold_bytes(template: Option<&Descriptor>, s: &PlacedSpec<'_>, warnings: &mut Vec<String>) -> Vec<u8> {
-    let warp = warp_desc(s.warp, s.size, warnings);
+    let stored = sold_warp(s.warp, warnings);
+    let warp = warp_desc(stored, s.size, warnings);
+    let split = stored.zip(split_mesh(stored));
     let d = match template {
         Some(t) => {
             let mut d = t.clone();
             if text_of(t, "placed").as_deref() != Some(s.placed) {
                 set(&mut d, "placed", Value::Text(UnicodeString::new_nul(s.placed)));
             }
-            if quad_moved(t, s) {
-                set(&mut d, "Trnf", quad(s));
-                set(&mut d, "nonAffineTransform", quad(s));
+            if quad_moved(t, s, stored) {
+                set(&mut d, "Trnf", quad(s, stored));
+                set(&mut d, "nonAffineTransform", quad(s, stored));
             }
             set(&mut d, "warp", warp);
+            // `quiltWarp` is read before `warp`, so the imported one stays only while it still
+            // says what the layer's warp is (unchanged, or unreadable while the layer has none);
+            // otherwise it is rewritten, or dropped for a warp that isn't split.
+            let old = get_desc(t, "quiltWarp");
+            let kept = old.is_some_and(|q| match crate::blocks::warp_of(q) {
+                Some(w) => w.as_ref() == stored,
+                None => s.warp.is_none(),
+            });
+            if !kept {
+                match split {
+                    Some((w, m)) => set_before(&mut d, "quiltWarp", quilt_desc(w, m, old), "warp"),
+                    None => d.items.retain(|(k, _)| !k.is("quiltWarp")),
+                }
+            }
             match &s.filter_fx {
                 Some(fx) => set(&mut d, "filterFX", Value::Descriptor(fx.clone())),
                 None => d.items.retain(|(k, _)| !k.is("filterFX")),
@@ -811,8 +899,12 @@ pub fn sold_bytes(template: Option<&Descriptor>, s: &PlacedSpec<'_>, warnings: &
                 .with("frameCount", Value::Integer(1))
                 .with("Annt", Value::Integer(16))
                 .with("Type", Value::Integer(2))
-                .with("Trnf", quad(s))
-                .with("nonAffineTransform", quad(s))
+                .with("Trnf", quad(s, stored))
+                .with("nonAffineTransform", quad(s, stored));
+            if let Some((w, m)) = split {
+                d = d.with("quiltWarp", quilt_desc(w, m, None));
+            }
+            let mut d = d
                 .with("warp", warp)
                 .with("Sz  ", Value::Descriptor(Descriptor::new("Pnt ").with("Wdth", Value::Double(s.size.0)).with("Hght", Value::Double(s.size.1))))
                 .with("Rslt", unit(b"#Rsl", s.dpi));
@@ -830,8 +922,9 @@ pub fn sold_bytes(template: Option<&Descriptor>, s: &PlacedSpec<'_>, warnings: &
 }
 
 /// `PlLd` block data (`plcL` version 3): the legacy placed-layer record Photoshop writes next to
-/// `SoLd`.
+/// `SoLd`. It has no split warp: it stores none, its corners framed by the source rect.
 pub fn plld_bytes(s: &PlacedSpec<'_>, warnings: &mut Vec<String>) -> Vec<u8> {
+    let warp = s.warp.filter(|_| split_mesh(s.warp).is_none());
     let mut out = b"plcL".to_vec();
     out.extend_from_slice(&3u32.to_be_bytes());
     let id = s.idnt.as_bytes();
@@ -841,7 +934,7 @@ pub fn plld_bytes(s: &PlacedSpec<'_>, warnings: &mut Vec<String>) -> Vec<u8> {
     for v in [1i32, 1, 16, 2] {
         out.extend_from_slice(&v.to_be_bytes());
     }
-    if let Value::List(q) = quad(s) {
+    if let Value::List(q) = quad(s, warp) {
         for v in q {
             if let Value::Double(x) = v {
                 out.extend_from_slice(&x.to_be_bytes());
@@ -849,7 +942,7 @@ pub fn plld_bytes(s: &PlacedSpec<'_>, warnings: &mut Vec<String>) -> Vec<u8> {
         }
     }
     out.extend_from_slice(&0u32.to_be_bytes());
-    let Value::Descriptor(w) = warp_desc(s.warp, s.size, warnings) else { return pad4(out) };
+    let Value::Descriptor(w) = warp_desc(warp, s.size, warnings) else { return pad4(out) };
     out.extend(VersionedDescriptor::new(w).to_bytes());
     pad4(out)
 }
@@ -1354,14 +1447,14 @@ mod tests {
         let mut w = Vec::new();
         let mut spec = PlacedSpec { idnt: "id", placed: "pl", transform: t, perspective: None, size: (20.0, 10.0), dpi: 72.0, warp: None, filter_fx: None };
         let template = parse_sold(&sold_bytes(None, &spec, &mut w)).expect("parses").descriptor;
-        assert!(!quad_moved(&template, &spec), "same placement");
+        assert!(!quad_moved(&template, &spec, spec.warp), "same placement");
         spec.transform = Affine { m: [1.0, 0.0, 0.0, 1.0, 3.5, 4.0] };
-        assert!(quad_moved(&template, &spec), "moved half a pixel");
+        assert!(quad_moved(&template, &spec, spec.warp), "moved half a pixel");
         spec.transform = t;
         spec.perspective =
             photocraft_algo::transform::Homography::rect_to_quad([0.0, 0.0, 20.0, 10.0], [[3.0, 4.0], [23.0, 4.0], [20.0, 12.0], [3.0, 14.0]]).map(|h| h.0);
-        assert!(quad_moved(&template, &spec), "one corner moved (Distort)");
-        assert!(quad_moved(&Descriptor::new("null"), &spec), "no stored quad");
+        assert!(quad_moved(&template, &spec, spec.warp), "one corner moved (Distort)");
+        assert!(quad_moved(&Descriptor::new("null"), &spec, spec.warp), "no stored quad");
     }
 
     /// Corrupted placed-layer data and filter descriptors never panic: they parse to something
@@ -1417,13 +1510,15 @@ mod tests {
         let mut custom = BezierMesh::identity(bounds, 1, 1);
         custom.points[15] = [67.0, 30.0];
         let mut multi = Warp::preset(WarpStyle::Custom, 0.0, bounds);
-        multi.mesh = Some(BezierMesh::identity(bounds, 2, 2));
+        let mut split = BezierMesh::identity(bounds, 2, 2);
+        split.points[8][1] += 4.0;
+        multi.mesh = Some(split);
         let mut arc = Warp::preset(WarpStyle::Arc, 40.0, bounds);
         arc.vertical = true;
         arc.h_distort = 10.0;
         let mut c = Warp::preset(WarpStyle::Custom, 0.0, bounds);
         c.mesh = Some(custom);
-        for (w, back) in [(Some(arc.clone()), Some(arc)), (Some(c.clone()), Some(c)), (Some(multi), None), (None, None)] {
+        for (w, back) in [(Some(arc.clone()), Some(arc)), (Some(c.clone()), Some(c)), (Some(multi.clone()), Some(multi)), (None, None)] {
             let mut warnings = Vec::new();
             let spec = PlacedSpec {
                 idnt: "i",
@@ -1437,8 +1532,214 @@ mod tests {
             };
             let sold = sold_bytes(None, &spec, &mut warnings);
             assert_eq!(crate::blocks::parse_placed_warp(b"SoLd", &sold), back);
-            assert_eq!(warnings.len(), usize::from(w.is_some() && back.is_none()));
+            assert!(warnings.is_empty(), "{warnings:?}");
         }
+    }
+
+    /// A placed layer over a 50 × 25 source, at `transform`, with `warp`.
+    fn placed<'a>(transform: Affine, warp: Option<&'a Warp>) -> PlacedSpec<'a> {
+        PlacedSpec { idnt: "i", placed: "p", transform, perspective: None, size: (50.0, 25.0), dpi: 72.0, warp, filter_fx: None }
+    }
+
+    /// A 3 × 2 patch split warp over the 50 × 25 source with one interior control point pulled.
+    fn split_warp() -> Warp {
+        use photocraft_geom::warp::BezierMesh;
+        let mut mesh = BezierMesh::identity([0.0, 0.0, 50.0, 25.0], 3, 2);
+        mesh.points[10 * 3 + 4][1] += 3.0;
+        Warp::custom(mesh, [0.0, 0.0, 50.0, 25.0])
+    }
+
+    /// An imported `soLD` descriptor holding `warp` as Photoshop writes a split warp: a
+    /// `quiltWarp` whose outer slices sit 0.6 px past the source, before a `warpNone` `warp`.
+    fn photoshop_template(warp: &Warp) -> Descriptor {
+        let mesh = warp.mesh.as_ref().expect("a mesh");
+        let slices = |k: &str, knots: &[f64], len: f64| {
+            let n = knots.len() - 1;
+            let values = knots
+                .iter()
+                .enumerate()
+                .map(|(i, u)| {
+                    if i == 0 {
+                        -0.6
+                    } else if i == n {
+                        len + 0.6
+                    } else {
+                        u * len
+                    }
+                })
+                .collect::<Vec<_>>();
+            let prefix = values.len() as u32;
+            Value::ObjectArray(ObjectArray { prefix, body: Descriptor::new("UntF").with(k, Value::UnitFloats { unit: *b"#Pxl", values }) })
+        };
+        let Value::Descriptor(plain) = warp_desc(None, (50.0, 25.0), &mut Vec::new()) else { panic!("a descriptor") };
+        let mut quilt = plain.clone();
+        quilt.class_id = Id::new("quiltWarp");
+        set(&mut quilt, "warpStyle", enumv("warpStyle", "warpCustom"));
+        let points = Descriptor::new("rationalPoint")
+            .with("Hrzn", Value::UnitFloats { unit: *b"#Pxl", values: mesh.points.iter().map(|p| p[0]).collect() })
+            .with("Vrtc", Value::UnitFloats { unit: *b"#Pxl", values: mesh.points.iter().map(|p| p[1]).collect() });
+        let envelope = Descriptor::new("customEnvelopeWarp")
+            .with("quiltSliceX", slices("quiltSliceX", &mesh.us, 50.0))
+            .with("quiltSliceY", slices("quiltSliceY", &mesh.vs, 25.0))
+            .with("meshPoints", Value::ObjectArray(ObjectArray { prefix: mesh.points.len() as u32, body: points }));
+        quilt = quilt
+            .with("deformNumRows", Value::Integer(mesh.ny() as i32))
+            .with("deformNumCols", Value::Integer(mesh.nx() as i32))
+            .with("customEnvelopeWarp", Value::Descriptor(envelope));
+        let mut d = sold_descriptor(&sold_bytes(None, &placed(Affine::IDENTITY, None), &mut Vec::new())).expect("a descriptor");
+        let at = d.items.iter().position(|(k, _)| k.is("warp")).expect("a warp key");
+        d.items.insert(at, (Id::new("quiltWarp"), Value::Descriptor(quilt)));
+        d
+    }
+
+    fn sold_of(d: Descriptor) -> Vec<u8> {
+        let mut out = b"soLD".to_vec();
+        out.extend_from_slice(&4u32.to_be_bytes());
+        out.extend(VersionedDescriptor::new(d).to_bytes());
+        out
+    }
+
+    fn quilt_of(d: &Descriptor) -> Option<&Descriptor> {
+        get_desc(d, "quiltWarp")
+    }
+
+    /// A split warp of more patches along a side than a `quiltWarp` is read with (Warp Grid 64,
+    /// then one more split) is written as no warp, with a message, framed by the source rect, so
+    /// the layer reopens where it was. Before, its `quiltWarp` was refused on reopen while `Trnf`
+    /// still framed its control box: the layer came back stretched and shifted.
+    #[test]
+    fn a_split_warp_past_the_quilt_limit_keeps_its_placement() {
+        use photocraft_geom::warp::BezierMesh;
+        let mut mesh = BezierMesh::identity([0.0, 0.0, 50.0, 25.0], crate::blocks::QUILT_MAX_PATCHES, 1);
+        assert!(mesh.split_u(0.005));
+        mesh.points[0] = [-10.0, -5.0];
+        let warp = Warp::custom(mesh, [0.0, 0.0, 50.0, 25.0]);
+        let transform = Affine { m: [2.0, 0.0, 0.0, 2.0, 120.0, 210.0] };
+        let mut warnings = Vec::new();
+        let sold = sold_bytes(None, &placed(transform, Some(&warp)), &mut warnings);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert_eq!(crate::blocks::parse_smart(b"SoLd", &sold).1, transform);
+        assert_eq!(crate::blocks::parse_placed_warp(b"SoLd", &sold), None);
+        assert!(quilt_of(&sold_descriptor(&sold).expect("a descriptor")).is_none());
+        // Over an imported split warp, the stale `quiltWarp` goes and the placement holds.
+        let template = photoshop_template(&split_warp());
+        let mut warnings = Vec::new();
+        let sold = sold_bytes(Some(&template), &placed(transform, Some(&warp)), &mut warnings);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert_eq!(crate::blocks::parse_smart(b"SoLd", &sold).1, transform);
+        assert!(quilt_of(&sold_descriptor(&sold).expect("a descriptor")).is_none());
+        // So does one this reader can't read, which Photoshop would still apply.
+        let mut template = photoshop_template(&split_warp());
+        let Some((_, Value::Descriptor(q))) = template.items.iter_mut().find(|(k, _)| k.is("quiltWarp")) else { panic!("a quiltWarp") };
+        set(q, "deformNumRows", Value::Integer(0));
+        let sold = sold_bytes(Some(&template), &placed(transform, Some(&warp)), &mut Vec::new());
+        assert!(quilt_of(&sold_descriptor(&sold).expect("a descriptor")).is_none());
+        // At the limit the split warp is still written.
+        let mut mesh = BezierMesh::identity([0.0, 0.0, 50.0, 25.0], crate::blocks::QUILT_MAX_PATCHES, 1);
+        mesh.points[0] = [-10.0, -5.0];
+        let warp = Warp::custom(mesh, [0.0, 0.0, 50.0, 25.0]);
+        let mut warnings = Vec::new();
+        let sold = sold_bytes(None, &placed(transform, Some(&warp)), &mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(crate::blocks::parse_smart(b"SoLd", &sold).1, transform);
+        assert_eq!(crate::blocks::parse_placed_warp(b"SoLd", &sold), Some(warp));
+    }
+
+    /// A split (multi-patch) custom warp is written as Photoshop writes it, a `quiltWarp` before a
+    /// `warpNone` `warp`, and reads back with its mesh and its transform. Before, the warp was
+    /// written as none while `Trnf` was still the image of its control-point box, so the layer
+    /// came back stretched and shifted.
+    #[test]
+    fn split_warp_round_trips_through_sold() {
+        use photocraft_geom::warp::BezierMesh;
+        let mut mesh = BezierMesh::identity([0.0, 0.0, 50.0, 25.0], 2, 1);
+        mesh.points[0] = [-10.0, -5.0];
+        let warp = Warp::custom(mesh, [0.0, 0.0, 50.0, 25.0]);
+        let transform = Affine { m: [2.0, 0.0, 0.0, 2.0, 120.0, 210.0] };
+        let mut warnings = Vec::new();
+        let sold = sold_bytes(None, &placed(transform, Some(&warp)), &mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(crate::blocks::parse_smart(b"SoLd", &sold).1, transform);
+        assert_eq!(crate::blocks::parse_placed_warp(b"SoLd", &sold), Some(warp));
+        let d = sold_descriptor(&sold).expect("a descriptor");
+        let at = |key: &str| d.items.iter().position(|(k, _)| k.is(key));
+        assert!(at("quiltWarp").expect("a quiltWarp") < at("warp").expect("a warp"));
+        let plain = get_desc(&d, "warp").expect("a warp");
+        assert_eq!(enum_of(plain, "warpStyle"), Some(&b"warpNone"[..]));
+        assert!(plain.get("customEnvelopeWarp").is_none());
+        let quilt = quilt_of(&d).expect("a quiltWarp");
+        assert!(quilt.class_id.is("quiltWarp"));
+        assert_eq!((quilt.get("deformNumCols"), quilt.get("deformNumRows")), (Some(&Value::Integer(7)), Some(&Value::Integer(4))));
+        let env = get_desc(quilt, "customEnvelopeWarp").expect("an envelope");
+        let prefix = |k: &str| match env.get(k) {
+            Some(Value::ObjectArray(a)) => Some(a.prefix),
+            _ => None,
+        };
+        assert_eq!((prefix("quiltSliceX"), prefix("quiltSliceY"), prefix("meshPoints")), (Some(3), Some(2), Some(28)));
+    }
+
+    /// A template's split warp is replaced along with its `warp`: a warp changed to Arc, to none,
+    /// to one patch or to another mesh reads back as changed, not as the imported split warp.
+    #[test]
+    fn a_replaced_split_warp_does_not_come_back() {
+        use photocraft_geom::warp::BezierMesh;
+        let bounds = [0.0, 0.0, 50.0, 25.0];
+        let split = split_warp();
+        let template = photoshop_template(&split);
+        let arc = Warp::preset(WarpStyle::Arc, 30.0, bounds);
+        let mut one = BezierMesh::identity(bounds, 1, 1);
+        one.points[5][0] += 2.0;
+        let one = Warp::custom(one, bounds);
+        let mut resplit = BezierMesh::identity(bounds, 2, 2);
+        resplit.points[8][1] += 4.0;
+        let resplit = Warp::custom(resplit, bounds);
+        for w in [Some(arc), None, Some(one), Some(resplit)] {
+            let mut warnings = Vec::new();
+            let sold = sold_bytes(Some(&template), &placed(Affine::IDENTITY, w.as_ref()), &mut warnings);
+            assert_eq!(crate::blocks::parse_placed_warp(b"SoLd", &sold), w);
+            let d = sold_descriptor(&sold).expect("a descriptor");
+            assert_eq!(quilt_of(&d).is_some(), w.as_ref().is_some_and(|w| w.mesh.as_ref().is_some_and(|m| m.points.len() > 16)), "{w:?}");
+            assert!(warnings.is_empty(), "{warnings:?}");
+        }
+    }
+
+    /// An imported split warp that nothing changed keeps Photoshop's `quiltWarp` as stored when
+    /// the layer is rewritten for something else (here a move); a mesh edited on the same grid
+    /// keeps Photoshop's slices.
+    #[test]
+    fn an_imported_split_warp_keeps_photoshop_s_quilt() {
+        let template = photoshop_template(&split_warp());
+        let read = crate::blocks::parse_placed_warp(b"SoLd", &sold_of(template.clone())).expect("the split warp");
+        let moved = Affine { m: [1.0, 0.0, 0.0, 1.0, 4.0, 0.0] };
+        let sold = sold_bytes(Some(&template), &placed(moved, Some(&read)), &mut Vec::new());
+        let d = sold_descriptor(&sold).expect("a descriptor");
+        assert_eq!(d.get("quiltWarp"), template.get("quiltWarp"));
+        assert_eq!(crate::blocks::parse_smart(b"SoLd", &sold).1, moved);
+        let mut edited = read.clone();
+        if let Some(m) = edited.mesh.as_mut() {
+            m.points[12][0] += 1.5;
+        }
+        let sold = sold_bytes(Some(&template), &placed(Affine::IDENTITY, Some(&edited)), &mut Vec::new());
+        assert_eq!(crate::blocks::parse_placed_warp(b"SoLd", &sold), Some(edited));
+        let slices = |d: &Descriptor| {
+            let env = get_desc(quilt_of(d)?, "customEnvelopeWarp")?;
+            Some((env.get("quiltSliceX").cloned(), env.get("quiltSliceY").cloned()))
+        };
+        assert_eq!(slices(&sold_descriptor(&sold).expect("a descriptor")), slices(&template));
+    }
+
+    /// The legacy `PlLd` record has no split warp: it stores none, with its corners framed by the
+    /// source rect, so a reader of `PlLd` alone places the layer where its transform puts it.
+    #[test]
+    fn plld_of_a_split_warp_is_framed_by_the_source() {
+        let warp = split_warp();
+        let transform = Affine { m: [2.0, 0.0, 0.0, 2.0, 120.0, 210.0] };
+        let mut warnings = Vec::new();
+        let plld = plld_bytes(&placed(transform, Some(&warp)), &mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(crate::blocks::parse_plld_warp(&plld), crate::blocks::PlldWarp::None);
+        let (_, corners) = crate::blocks::parse_plld(&plld).expect("a record");
+        assert_eq!(crate::blocks::plld_transform(&corners, Some((50.0, 25.0)), None).0, transform);
     }
 
     /// Export writes `Trnf` as the image of the custom warp's control-point box, the inverse of
@@ -1460,7 +1761,7 @@ mod tests {
         assert_eq!(q, [100.0, 200.0, 240.0, 200.0, 240.0, 260.0, 100.0, 260.0]);
         assert_eq!(p.transform, transform);
         // The imported quad reads as unmoved, so the template's `Trnf` is kept as stored.
-        assert!(!quad_moved(&p.descriptor, &spec));
+        assert!(!quad_moved(&p.descriptor, &spec, spec.warp));
     }
 
     #[test]

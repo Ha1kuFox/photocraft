@@ -127,9 +127,7 @@ fn max_line_dev(pts: &[[f64; 2]], a: [f64; 2], b: [f64; 2]) -> f64 {
     if len <= 0.0 {
         return f64::INFINITY;
     }
-    pts.iter()
-        .map(|p| ((p[0] - a[0]) * dy - (p[1] - a[1]) * dx).abs() / len)
-        .fold(0.0, f64::max)
+    pts.iter().map(|p| ((p[0] - a[0]) * dy - (p[1] - a[1]) * dx).abs() / len).fold(0.0, f64::max)
 }
 
 /// Iterative Douglas–Peucker; returns the kept indices. Bounded work list, no recursion.
@@ -159,11 +157,7 @@ fn douglas_peucker(pts: &[[f64; 2]], eps: f64) -> Vec<usize> {
         let mut best = 0.0;
         let mut idx = a;
         for (i, p) in pts.iter().enumerate().take(b).skip(a + 1) {
-            let d = if len > 0.0 {
-                ((p[0] - pa[0]) * dy - (p[1] - pa[1]) * dx).abs() / len
-            } else {
-                dist(*p, pa)
-            };
+            let d = if len > 0.0 { ((p[0] - pa[0]) * dy - (p[1] - pa[1]) * dx).abs() / len } else { dist(*p, pa) };
             if d > best {
                 best = d;
                 idx = i;
@@ -257,11 +251,7 @@ fn arc_deviation(ring: &[[f64; 2]], a: usize, b: usize) -> f64 {
     let mut best: f64 = 0.0;
     while i != b {
         let p = ring[i];
-        let d = if len > 0.0 {
-            ((p[0] - pa[0]) * dy - (p[1] - pa[1]) * dx).abs() / len
-        } else {
-            dist(p, pa)
-        };
+        let d = if len > 0.0 { ((p[0] - pa[0]) * dy - (p[1] - pa[1]) * dx).abs() / len } else { dist(p, pa) };
         best = best.max(d);
         i = (i + 1) % n;
         if i == (a + 1) % n {
@@ -380,8 +370,7 @@ pub fn fit(raw: &[StrokePoint]) -> Option<Correction> {
         let mut mean = 0.0;
         let mut rho = Vec::with_capacity(ring.len());
         for d in &dxs {
-            let r = ((d[0] * axis[0] + d[1] * axis[1]) / ext_a).powi(2)
-                + ((d[0] * minor[0] + d[1] * minor[1]) / ext_m).powi(2);
+            let r = ((d[0] * axis[0] + d[1] * axis[1]) / ext_a).powi(2) + ((d[0] * minor[0] + d[1] * minor[1]) / ext_m).powi(2);
             let r = r.max(0.0).sqrt();
             rho.push(r);
             mean += r;
@@ -389,12 +378,7 @@ pub fn fit(raw: &[StrokePoint]) -> Option<Correction> {
         mean /= rho.len().max(1) as f64;
         let var = rho.iter().map(|r| (r - mean) * (r - mean)).sum::<f64>() / rho.len().max(1) as f64;
         if var.sqrt() <= ELLIPSE_TOL {
-            return Some(Correction::Ellipse {
-                center,
-                rx: ext_a,
-                ry: ext_m,
-                rot: axis[1].atan2(axis[0]),
-            });
+            return Some(Correction::Ellipse { center, rx: ext_a, ry: ext_m, rot: axis[1].atan2(axis[0]) });
         }
     }
     None
@@ -426,7 +410,7 @@ pub fn stretch(base: &Correction, start: [f64; 2], end: [f64; 2]) -> Option<Corr
     match base {
         Correction::Line { .. } => Some(Correction::Line { a: start, b: end }),
         Correction::Rect(_) => {
-            let (lo, hi) = ( [start[0].min(end[0]), start[1].min(end[1])], [start[0].max(end[0]), start[1].max(end[1])] );
+            let (lo, hi) = ([start[0].min(end[0]), start[1].min(end[1])], [start[0].max(end[0]), start[1].max(end[1])]);
             Some(Correction::Rect([[lo[0], lo[1]], [hi[0], lo[1]], [hi[0], hi[1]], [lo[0], hi[1]]]))
         }
         Correction::Ellipse { .. } => Some(Correction::Ellipse {
@@ -437,16 +421,12 @@ pub fn stretch(base: &Correction, start: [f64; 2], end: [f64; 2]) -> Option<Corr
         }),
         Correction::Triangle(c) => {
             let (omin, omax) = bbox(c);
-            let (nmin, nmax) = ( [start[0].min(end[0]), start[1].min(end[1])], [start[0].max(end[0]), start[1].max(end[1])] );
+            let (nmin, nmax) = ([start[0].min(end[0]), start[1].min(end[1])], [start[0].max(end[0]), start[1].max(end[1])]);
             let map = |p: [f64; 2]| {
                 let mut q = p;
                 for i in 0..2 {
                     let span = omax[i] - omin[i];
-                    q[i] = if span > 1e-9 {
-                        nmin[i] + (p[i] - omin[i]) / span * (nmax[i] - nmin[i])
-                    } else {
-                        (nmin[i] + nmax[i]) / 2.0
-                    };
+                    q[i] = if span > 1e-9 { nmin[i] + (p[i] - omin[i]) / span * (nmax[i] - nmin[i]) } else { (nmin[i] + nmax[i]) / 2.0 };
                 }
                 q
             };
@@ -515,8 +495,7 @@ fn poly_sample(pts: &[[f64; 2]], n: usize) -> Vec<[f64; 2]> {
 /// (interpolated by arc length) and stylus state. Non-finite stylus values fall back to
 /// neutral ones: a hand-edited or fuzzed point must degrade pixels, never poison the renderer.
 pub fn stroke_points(c: &Correction, raw: &[StrokePoint]) -> Vec<StrokePoint> {
-    let finite_raw: Vec<&StrokePoint> =
-        raw.iter().filter(|p| p.x.is_finite() && p.y.is_finite()).collect();
+    let finite_raw: Vec<&StrokePoint> = raw.iter().filter(|p| p.x.is_finite() && p.y.is_finite()).collect();
     if finite_raw.is_empty() {
         return Vec::new();
     }
@@ -590,16 +569,7 @@ mod tests {
         coords
             .iter()
             .enumerate()
-            .map(|(i, c)| StrokePoint {
-                x: c[0],
-                y: c[1],
-                pressure: 0.8,
-                tilt_x: 0.0,
-                tilt_y: 0.0,
-                rotation: 0.0,
-                wheel: 0.0,
-                time: i as f64 * 8.0,
-            })
+            .map(|(i, c)| StrokePoint { x: c[0], y: c[1], pressure: 0.8, tilt_x: 0.0, tilt_y: 0.0, rotation: 0.0, wheel: 0.0, time: i as f64 * 8.0 })
             .collect()
     }
 
@@ -669,8 +639,7 @@ mod tests {
     #[test]
     fn scribble_falls_back_to_smooth() {
         // An S-curve: open, not a line.
-        let raw: Vec<[f64; 2]> =
-            (0..50).map(|i| [i as f64 * 4.0, 100.0 + 60.0 * ((i as f64 / 50.0 * 4.0).sin())]).collect();
+        let raw: Vec<[f64; 2]> = (0..50).map(|i| [i as f64 * 4.0, 100.0 + 60.0 * ((i as f64 / 50.0 * 4.0).sin())]).collect();
         let c = fit(&pts(&raw)).expect("a fallback exists");
         assert!(matches!(c, Correction::Smooth(_)), "got {c:?}");
     }
@@ -717,16 +686,7 @@ mod robustness_tests {
         coords
             .iter()
             .enumerate()
-            .map(|(i, c)| StrokePoint {
-                x: c[0],
-                y: c[1],
-                pressure: 0.8,
-                tilt_x: 0.0,
-                tilt_y: 0.0,
-                rotation: 0.0,
-                wheel: 0.0,
-                time: i as f64 * 8.0,
-            })
+            .map(|(i, c)| StrokePoint { x: c[0], y: c[1], pressure: 0.8, tilt_x: 0.0, tilt_y: 0.0, rotation: 0.0, wheel: 0.0, time: i as f64 * 8.0 })
             .collect()
     }
 
@@ -796,16 +756,7 @@ mod edge_tests {
         coords
             .iter()
             .enumerate()
-            .map(|(i, c)| StrokePoint {
-                x: c[0],
-                y: c[1],
-                pressure: 0.8,
-                tilt_x: 0.0,
-                tilt_y: 0.0,
-                rotation: 0.0,
-                wheel: 0.0,
-                time: i as f64 * 8.0,
-            })
+            .map(|(i, c)| StrokePoint { x: c[0], y: c[1], pressure: 0.8, tilt_x: 0.0, tilt_y: 0.0, rotation: 0.0, wheel: 0.0, time: i as f64 * 8.0 })
             .collect()
     }
 
@@ -825,10 +776,7 @@ mod edge_tests {
             }
             for i in 0..=per_edge {
                 let t = i as f64 / per_edge as f64;
-                raw.push([
-                    a[0] + (b[0] - a[0]) * t + (rng.next() - 0.5) * 2.0 * wob,
-                    a[1] + (b[1] - a[1]) * t + (rng.next() - 0.5) * 2.0 * wob,
-                ]);
+                raw.push([a[0] + (b[0] - a[0]) * t + (rng.next() - 0.5) * 2.0 * wob, a[1] + (b[1] - a[1]) * t + (rng.next() - 0.5) * 2.0 * wob]);
             }
         }
         if close {
@@ -841,10 +789,7 @@ mod edge_tests {
         (0..count)
             .map(|i| {
                 let t = i as f64 / count as f64 * std::f64::consts::TAU;
-                [
-                    cx + r * t.cos() + (rng.next() - 0.5) * 2.0 * wob,
-                    cy + r * t.sin() + (rng.next() - 0.5) * 2.0 * wob,
-                ]
+                [cx + r * t.cos() + (rng.next() - 0.5) * 2.0 * wob, cy + r * t.sin() + (rng.next() - 0.5) * 2.0 * wob]
             })
             .collect()
     }
@@ -853,13 +798,11 @@ mod edge_tests {
     fn rotated_shapes_classify() {
         let mut rng = Rng(0x0123_4567_89ab_cdef);
         // A diamond is a square rotated 45°; rotation must not matter.
-        let diamond: Vec<[f64; 2]> =
-            [[0.0, -100.0], [100.0, 0.0], [0.0, 100.0], [-100.0, 0.0]].iter().map(|&p| rot(p, 13.0)).collect();
+        let diamond: Vec<[f64; 2]> = [[0.0, -100.0], [100.0, 0.0], [0.0, 100.0], [-100.0, 0.0]].iter().map(|&p| rot(p, 13.0)).collect();
         let c = fit(&mk(&draw_poly(&diamond, 20, &mut rng, 2.0, true))).expect("diamond fits");
         assert!(matches!(c, Correction::Rect(_)), "got {c:?}");
         // A triangle pointing anywhere classifies.
-        let tri: Vec<[f64; 2]> =
-            [[0.0, -90.0], [85.0, 60.0], [-85.0, 60.0]].iter().map(|&p| rot(p, 200.0)).collect();
+        let tri: Vec<[f64; 2]> = [[0.0, -90.0], [85.0, 60.0], [-85.0, 60.0]].iter().map(|&p| rot(p, 200.0)).collect();
         let c = fit(&mk(&draw_poly(&tri, 20, &mut rng, 2.0, true))).expect("rotated triangle fits");
         assert!(matches!(c, Correction::Triangle(_)), "got {c:?}");
         // A rotated ellipse keeps its rotation.

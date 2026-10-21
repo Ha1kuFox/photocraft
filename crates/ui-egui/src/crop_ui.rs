@@ -645,7 +645,7 @@ pub fn swapped(r: [f64; 4]) -> [f64; 4] {
 /// no ratio is set; "original" becomes the document's size turned on its side.
 pub fn swapped_ratio(key: &str, doc_w: f64, doc_h: f64) -> Option<String> {
     let (w, h) = crate::chrome_ui::crop_ratio(key, doc_w, doc_h).filter(|(w, h)| w.is_finite() && h.is_finite() && *w > 0.0 && *h > 0.0)?;
-    Some(format!("{}:{}", crate::widgets::fmt_num(h), crate::widgets::fmt_num(w)))
+    Some(format!("{}:{}", crate::crop_size::fmt_ratio(h), crate::crop_size::fmt_ratio(w)))
 }
 
 /// X: swaps the pending frame between portrait and landscape about its centre, keeping its angle,
@@ -1725,6 +1725,22 @@ mod tests {
     }
 
     #[test]
+    fn enter_during_a_drag_ends_the_drag() {
+        // ↵ while the frame is still being dragged commits it; the release after must not bring
+        // back a frame in the old document's coordinates as a pending crop.
+        let mut app = app(SampleType::U8);
+        app.ui.crop_rect = Some([20.0, 20.0, 120.0, 70.0]);
+        tool_event(&mut app, ToolEvent::Down { x: 50.0, y: 40.0, pressure: 1.0 }, NONE);
+        tool_event(&mut app, ToolEvent::Move { x: 60.0, y: 40.0, pressure: 1.0 }, NONE);
+        crate::canvas::commit_crop(&mut app);
+        tool_event(&mut app, ToolEvent::Up { x: 60.0, y: 40.0 }, NONE);
+        ensure_frame(&mut app);
+        assert_eq!(app.session.active().unwrap().doc.size, Size::new(100, 50));
+        assert_eq!(app.ui.crop_rect, Some([0.0, 0.0, 100.0, 50.0]));
+        assert!(!pending(&app));
+    }
+
+    #[test]
     fn degenerate_and_bad_input_never_panics() {
         let mut app = app(SampleType::U8);
         for r in [[0.0; 4], [5.0, 5.0, 5.0, 5.0], [10.0, 10.0, 0.0, 0.0], [f64::NAN, 0.0, 10.0, 10.0], [f64::INFINITY, 0.0, f64::MAX, 1e300]] {
@@ -1949,6 +1965,7 @@ mod tests {
         app.ui.tool_options.crop_ratio = String::new();
         assert!(swap_orientation(&mut app));
         assert_eq!(app.ui.tool_options.crop_ratio, "", "no ratio stays none");
+        assert_eq!(swapped_ratio("1.414:1", 1.0, 1.0).as_deref(), Some("1:1.414"), "decimals survive the swap (#6487)");
         assert_eq!(swapped_ratio("0:5", 1.0, 1.0), None);
         assert_eq!(swapped_ratio("nonsense", 1.0, 1.0), None);
         // No frame, or another tool: X is Switch Foreground and Background Colors.

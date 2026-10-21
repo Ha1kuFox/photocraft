@@ -7,15 +7,15 @@
 //! (adjustments, effects, groups, text/shapes/vectors, patterns, clipped layers, exotic
 //! boundary blends, knockouts, feathered masks, vector masks, non-RGB8 documents).
 
+use crate::psblend as blend;
 use photocraft_color::BlendMode;
 use photocraft_doc::{Fill, Layer, LayerContent};
 use photocraft_geom::Rect;
 use photocraft_raster::Surface;
-use crate::psblend as blend;
 
-use crate::{Buffer, blend_over};
 use crate::effects::{gradient_t_eval, gradient_t_prepare};
 use crate::gradient_fill::Ramp;
+use crate::{Buffer, blend_over};
 
 /// The top slice must be plain paint to render reduced: raster/gradient/solid layers, all
 /// Normal blends, no adjustments, effects, groups, text, shapes, vectors or patterns, masks
@@ -26,14 +26,7 @@ fn plain_layer(layer: &Layer) -> bool {
     if layer.blend != BlendMode::Normal {
         return false;
     }
-    if matches!(
-        layer.content,
-        LayerContent::Adjustment(_)
-            | LayerContent::Group(_)
-            | LayerContent::Text(_)
-            | LayerContent::Shape(_)
-
-    ) {
+    if matches!(layer.content, LayerContent::Adjustment(_) | LayerContent::Group(_) | LayerContent::Text(_) | LayerContent::Shape(_)) {
         return false;
     }
     if matches!(layer.content, LayerContent::Fill(Fill::Pattern { .. })) {
@@ -80,10 +73,7 @@ pub fn top_eligible(doc: &photocraft_doc::Document, start: usize) -> bool {
     // Blend Clipped Layers as Group off takes a different code path: any base with visible
     // clipped followers falls back.
     for (i, layer) in layers[start..].iter().enumerate() {
-        if !layer.clipped
-            && !layer.advanced.blend_clipped
-            && layers[start + i + 1..].iter().take_while(|c| c.clipped).any(|c| c.visible)
-        {
+        if !layer.clipped && !layer.advanced.blend_clipped && layers[start + i + 1..].iter().take_while(|c| c.clipped).any(|c| c.visible) {
             return false;
         }
     }
@@ -157,13 +147,7 @@ pub fn render_top_reduced(doc: &photocraft_doc::Document, start: usize, w: u32, 
                         continue;
                     }
                     // Blend as if the base were opaque, then keep the base's alpha.
-                    let r = blend::composite_gamma(
-                        BlendMode::Normal,
-                        [group[0], group[1], group[2], 1.0],
-                        s,
-                        c.opacity * c.fill_opacity,
-                        1.0,
-                    );
+                    let r = blend::composite_gamma(BlendMode::Normal, [group[0], group[1], group[2], 1.0], s, c.opacity * c.fill_opacity, 1.0);
                     group = [r[0], r[1], r[2], group[3]];
                 }
                 let base = &layers[k];

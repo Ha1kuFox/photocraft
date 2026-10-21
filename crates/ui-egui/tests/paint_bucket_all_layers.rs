@@ -2,8 +2,8 @@
 //! only the active layer. Drive the checkbox and canvas through real egui pointer events.
 
 use egui::{Modifiers, PointerButton, Pos2};
-use egui_kittest::kittest::Queryable;
 use egui_kittest::kittest::NodeT;
+use egui_kittest::kittest::Queryable;
 use photocraft_doc::LayerId;
 use photocraft_geom::Rect;
 use photocraft_ui_egui::PhotocraftApp;
@@ -53,7 +53,7 @@ fn setup(h: &mut Harness) -> LayerId {
         o.tolerance = 0.0;
         o.anti_alias = false;
         o.contiguous = true;
-        o.sample_all_layers = false;
+        o.sample_all.paint_bucket = false;
         o.bucket_sample = "active".into();
         o.bucket_fill_pattern = false;
         o.fill_opacity = 100.0;
@@ -105,11 +105,8 @@ fn all_layers_checkbox_limits_bucket_fill_to_the_visible_color() {
             h.key_press(egui::Key::ArrowDown);
             h.run_steps(3);
         }
-        assert_eq!(
-            h.state().ui.tool_options.bucket_sample,
-            if all_layers { "all" } else { "active" },
-            "dropdown changed the sampling"
-        );
+        assert_eq!(h.state().ui.tool_options.bucket_sample, if all_layers { "all" } else { "active" }, "dropdown changed the sampling");
+        assert_eq!(h.state().ui.tool_options.sample_all.paint_bucket, all_layers, "the per-tool flag follows the dropdown");
 
         let pos = screen(&h, 300.0, 150.0);
         h.event(egui::Event::PointerMoved(pos));

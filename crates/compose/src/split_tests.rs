@@ -12,13 +12,11 @@ const E: f32 = 2.0 / 255.0;
 
 fn max_diff(a: &Buffer, b: &Buffer) -> f32 {
     assert_eq!(a.rect, b.rect);
-    a.px.iter()
-        .zip(&b.px)
-        .map(|(x, y)| x.iter().zip(y).map(|(u, v)| (u - v).abs()).fold(0.0, f32::max))
-        .fold(0.0, f32::max)
+    a.px.iter().zip(&b.px).map(|(x, y)| x.iter().zip(y).map(|(u, v)| (u - v).abs()).fold(0.0, f32::max)).fold(0.0, f32::max)
 }
 
-fn assert_split(doc: &Document, grad: LayerId, w: u32, h: u32) {    let k = preview_split(doc, grad).expect("eligible stack must split");
+fn assert_split(doc: &Document, grad: LayerId, w: u32, h: u32) {
+    let k = preview_split(doc, grad).expect("eligible stack must split");
     let full = render_reduced(doc, w, h);
     let (split, base) = render_reduced_split(doc, k, w, h, None);
     assert!(max_diff(&full, &split) <= E, "split matches full");
@@ -194,5 +192,3 @@ fn preview_falls_back_on_adjustment_above() {
     with_adj.layers.push(Layer::new("curves", LayerContent::Adjustment(Adjustment::identity_curves())));
     assert!(render_reduced_preview(&with_adj, k, 48, 32, None).is_none());
 }
-
-

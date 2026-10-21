@@ -1043,6 +1043,13 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     }
                     continue;
                 }
+                // ⌘/Ctrl-click with Curves open adds a point at the pixel's tone, on press only (#7325).
+                if !secondary && !space && button != "middle" && mods.command && crate::adjust_dialog::curves_on_top(app) {
+                    if matches!(ev, ToolEvent::Down { .. }) {
+                        crate::adjust_dialog::add_point_at(app, ctx, x, y, mods.shift);
+                    }
+                    continue;
+                }
                 // A Properties Levels/Curves eyedropper owns the primary button the same way.
                 if app.ui.dialogs.is_empty() && !matches!(s("button"), Some("secondary" | "right")) && crate::layer_picker::armed(app).is_some() {
                     if matches!(ev, ToolEvent::Down { .. }) {
@@ -1093,7 +1100,10 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                         }
                         continue;
                     }
-                    if crate::canvas_tool_menu::applies(app.ui.tool) || crate::canvas_tool_menu::editing_text(app, app.ui.tool) {
+                    if crate::canvas_tool_menu::applies(app.ui.tool)
+                        || crate::canvas_tool_menu::editing_text(app, app.ui.tool)
+                        || crate::canvas_tool_menu::type_layer_at(app, app.ui.tool, [x, y]).is_some()
+                    {
                         if down {
                             crate::canvas_tool_menu::open_at(app, ctx, app.ui.tool, screen_point(app, x, y), Some([x, y]));
                         }
@@ -1270,10 +1280,10 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             }
             None => err("missing `path`"),
         },
-        "app.save" => match crate::targa_options_ui::bits_param(p, "app.save") {
-            Ok(tga_bits) => {
+        "app.save" => match crate::FormatChoices::from_params(p, "app.save") {
+            Ok(choices) => {
                 let path = s("path").map(str::to_string);
-                run_waiting(app, p.get("wait").and_then(Value::as_bool).unwrap_or(true), move |app| app.save_automation_with(path, tga_bits))
+                run_waiting(app, p.get("wait").and_then(Value::as_bool).unwrap_or(true), move |app| app.save_automation_with(path, choices))
             }
             Err(e) => err(e),
         },
@@ -1707,7 +1717,7 @@ mod tests {
         let image = clipboard.clone();
         let mut app = PhotocraftApp::new(
             photocraft_engine::Session::new(),
-            crate::Services { clipboard_get_image: Some(Box::new(move || image.lock().ok()?.clone())), ..Default::default() },
+            crate::Services { clipboard_get_image: Some(Box::new(move || Ok(image.lock().unwrap().clone()))), ..Default::default() },
         );
         let ctx = egui::Context::default();
         let opened = call(&mut app, &ctx, "ui.dialog.open", json!({"kind":"newDocument"}));
@@ -2429,6 +2439,37 @@ mod tests {
         let r = call(&mut app, &ctx, "app.save", json!({"path": "d.tga", "tgaBits": 16}));
         assert!(r["error"].as_str().unwrap().contains("tgaBits"), "{r}");
         assert_eq!(written.borrow().len(), 3, "a bad tgaBits writes nothing");
+    }
+
+    /// `app.save` takes the DDS options (`ddsCompression`, `ddsMipmaps`) and never stops at DDS
+    /// Options.
+    #[test]
+    fn automation_save_passes_dds_options_without_asking() {
+        use photocraft_io::{DdsCompression, DdsOptions};
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let asked: Rc<RefCell<Vec<DdsOptions>>> = Rc::default();
+        let a = asked.clone();
+        let services = crate::Services {
+            export: Some(Box::new(move |_d: &photocraft_doc::Document, _p: &str, s: &crate::ExportSettings| {
+                a.borrow_mut().push(s.dds);
+                Ok((b"out".to_vec(), Vec::new()))
+            })),
+            automation_write: Some(Box::new(|_: &str, _: &[u8]| Ok(()))),
+            ..Default::default()
+        };
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
+        let ctx = egui::Context::default();
+        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
+        for params in [json!({"path": "a.dds"}), json!({"path": "b.dds", "ddsCompression": "bc1", "ddsMipmaps": true})] {
+            let r = call(&mut app, &ctx, "app.save", params.clone());
+            assert_eq!(r["result"]["path"], params["path"], "{r}");
+            assert!(app.dds_options.is_none(), "automation saves never prompt");
+        }
+        assert_eq!(*asked.borrow(), [DdsOptions::default(), DdsOptions { compression: DdsCompression::Bc1, mipmaps: true }]);
+        let r = call(&mut app, &ctx, "app.save", json!({"path": "c.dds", "ddsCompression": "bc9"}));
+        assert!(r["error"].as_str().unwrap().contains("ddsCompression"), "{r}");
+        assert_eq!(asked.borrow().len(), 2, "a bad ddsCompression writes nothing");
     }
 
     #[test]

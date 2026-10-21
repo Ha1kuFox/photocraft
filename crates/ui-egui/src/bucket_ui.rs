@@ -10,7 +10,7 @@ use serde_json::json;
 use crate::PhotocraftApp;
 use crate::state::Tool;
 use crate::theme::Tokens;
-use crate::{widgets};
+use crate::widgets;
 
 fn opt(ui: &mut egui::Ui, text: &str) {
     let t = Tokens::get(ui.ctx());
@@ -41,20 +41,23 @@ pub fn click_params(app: &mut PhotocraftApp, x: f64, y: f64) -> serde_json::Valu
         "closeGap": o.bucket_close_gap.clamp(0.0, 20.0),
         "target": crate::canvas::paint_target(app),
     });
-    let sample = match o.bucket_sample.as_str() {
-        "all" => json!("all"),
-        "layer" if o.bucket_sample_layer != 0 => json!({"layer": o.bucket_sample_layer}),
-        "layer" => {
-            app.ui.status = tl!("No reference layer chosen — sampling the current layer").into();
-            app.ui.status_error = false;
-            json!("active")
+    // The per-tool All Layers flag (tool presets store it, #5524) also means all layers.
+    let sample = if o.sample_all.paint_bucket {
+        json!("all")
+    } else {
+        match o.bucket_sample.as_str() {
+            "all" => json!("all"),
+            "layer" if o.bucket_sample_layer != 0 => json!({"layer": o.bucket_sample_layer}),
+            "layer" => {
+                app.ui.status = tl!("No reference layer chosen — sampling the current layer").into();
+                app.ui.status_error = false;
+                json!("active")
+            }
+            _ => json!("active"),
         }
-        _ => json!("active"),
     };
     // A chosen layer that is gone (or lost its pixels) falls back with a note, as agreed.
-    if sample.get("layer").is_some()
-        && reference_layers(app).iter().all(|(id, _)| *id != o.bucket_sample_layer)
-    {
+    if sample.get("layer").is_some() && reference_layers(app).iter().all(|(id, _)| *id != o.bucket_sample_layer) {
         app.ui.status = tl!("The reference layer is gone — sampling the current layer").into();
         app.ui.status_error = false;
         p["sample"] = json!("active");
@@ -85,19 +88,19 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     widgets::checkbox(ui, &mut o.contiguous, tl!("Contiguous"));
     widgets::vline(ui, 22.0);
     opt(ui, tl!("Sample"));
+    // The per-tool All Layers flag (tool presets store it, #5524) and the dropdown are one
+    // setting: a preset's value wins until the dropdown changes.
+    if o.sample_all.paint_bucket != (o.bucket_sample == "all") {
+        o.bucket_sample = if o.sample_all.paint_bucket { "all" } else { "active" }.into();
+    }
     let mut mode: u8 = match o.bucket_sample.as_str() {
         "all" => 1,
         "layer" => 2,
         _ => 0,
     };
-    if widgets::dropdown(
-        ui,
-        "bucket-sample",
-        &mut mode,
-        &[(0u8, tl!("Current Layer")), (1, tl!("All Layers")), (2, tl!("Reference Layer"))],
-        130.0,
-    ) {
+    if widgets::dropdown(ui, "bucket-sample", &mut mode, &[(0u8, tl!("Current Layer")), (1, tl!("All Layers")), (2, tl!("Reference Layer"))], 130.0) {
         o.bucket_sample = ["active", "all", "layer"][mode as usize].into();
+        o.sample_all.paint_bucket = o.bucket_sample == "all";
     }
     if o.bucket_sample == "layer" {
         let refs: Vec<(u64, &str)> = layers.iter().map(|(id, name)| (*id, name.as_str())).collect();

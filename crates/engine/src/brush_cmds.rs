@@ -329,9 +329,12 @@ fn stroke_with(s: &mut Session, cmd: &str, p: &Value, label: &str, brush: BrushS
 fn correct_stroke(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "paint.correctStroke";
     let raw = parse_points(p, CMD)?;
-    let fitted = parse_points(&json!({"points": p.get("correctedPoints")}), CMD)
-        .map_err(|_| bad(CMD, "missing `correctedPoints`"))?;
-    let cmd = p.get("strokeCommand").and_then(Value::as_str).filter(|c| *c == "paint.stroke" || *c == "paint.pencil").ok_or_else(|| bad(CMD, "`strokeCommand` is `paint.stroke` or `paint.pencil`"))?;
+    let fitted = parse_points(&json!({"points": p.get("correctedPoints")}), CMD).map_err(|_| bad(CMD, "missing `correctedPoints`"))?;
+    let cmd = p
+        .get("strokeCommand")
+        .and_then(Value::as_str)
+        .filter(|c| *c == "paint.stroke" || *c == "paint.pencil")
+        .ok_or_else(|| bad(CMD, "`strokeCommand` is `paint.stroke` or `paint.pencil`"))?;
     let symmetric = s.active().is_some_and(|st| st.symmetry.is_some());
     // The raw live stroke's offer, matched the way `stroke_with` matches it.
     let mut stripped = p.clone();
@@ -351,7 +354,13 @@ fn correct_stroke(s: &mut Session, p: &Value) -> Result<Value> {
     let pencil = cmd == "paint.pencil";
     let brush0 = if pencil { pencil_brush(s, p)? } else { with_blend_mode(resolve_brush(s, p, cmd)?, p) };
     let (id, brush, zoom) = stroke_target(s, p, brush0)?;
-    let label = if brush.erase && !clear_mode(p) { "Eraser" } else if pencil { "Pencil" } else { "Brush Tool" };
+    let label = if brush.erase && !clear_mode(p) {
+        "Eraser"
+    } else if pencil {
+        "Pencil"
+    } else {
+        "Brush Tool"
+    };
     let auto_erase = pencil && flag(p, "autoErase", false);
     let (bg, fg) = (s.tools.background, brush.color);
     let cmyk = doc_cmyk_space(s);
@@ -612,7 +621,16 @@ impl LiveStroke {
     pub fn into_commit(mut self) -> Result<LiveCommit> {
         let bounds = self.bounds();
         let (surf, _) = crate::channel_cmds::target_surface(std::sync::Arc::make_mut(&mut self.doc), self.layer, &self.params)?;
-        Ok(LiveCommit { cmd: self.cmd, base: self.base, params: self.params, seed: Some(self.seed), points: self.points, surface: surf.clone(), bounds, pre: self.pre })
+        Ok(LiveCommit {
+            cmd: self.cmd,
+            base: self.base,
+            params: self.params,
+            seed: Some(self.seed),
+            points: self.points,
+            surface: surf.clone(),
+            bounds,
+            pre: self.pre,
+        })
     }
 
     /// Everything the stroke has touched so far.
@@ -740,13 +758,13 @@ fn mixer_brush(s: &mut Session, p: &Value) -> Result<Value> {
         mix: pct(p, "mix", bm.mix * 100.0),
         flow: pct(p, "flow", bm.flow * 100.0),
         sample_all_layers: flag(p, "sampleAllLayers", bm.sample_all_layers),
+        load_after_stroke: flag(p, "loadAfterStroke", bm.load_after_stroke),
+        clean_after_stroke: flag(p, "cleanAfterStroke", bm.clean_after_stroke),
     };
     let sample_all = m.sample_all_layers;
-    let (clean, load_after) = (flag(p, "cleanAfterStroke", true), flag(p, "loadAfterStroke", true));
+    let paint = color(p.get("color"), s.tools.foreground);
     let mut state = s.tools.mixer.clone();
-    if load_after || state.reservoir.is_none() {
-        state.load(color(p.get("color"), s.tools.foreground));
-    }
+    state.begin_stroke(paint);
     let id = if crate::channel_cmds::is_channel_target(p) { None } else { Some(layer_id(s, p)?) };
     let stroke = Stroke { brush, points: pts };
     let dmg = s.edit("Mixer Brush", |doc, _| {
@@ -768,11 +786,41 @@ fn mixer_brush(s: &mut Session, p: &Value) -> Result<Value> {
         let (surf, lock) = crate::channel_cmds::target_surface(doc, id, p)?;
         Ok(apply_mixer_stroke(surf, sample.as_ref(), &stroke, &m, &mut state, sel.as_ref(), lock))
     })?;
-    if clean {
-        state.clean();
-    }
+    state.end_stroke(paint, m.clean_after_stroke, m.load_after_stroke);
     s.tools.mixer = state;
     Ok(damage_json(s, dmg))
+}
+
+/// `brush.mixer.load`: Load Brush fills the Mixer Brush's reservoir with the color. The next stroke
+/// keeps that paint unless a different foreground is chosen first. Returns the paint the brush now
+/// carries.
+fn mixer_load(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "brush.mixer.load";
+    let paint = match p.get("color").filter(|v| !v.is_null()) {
+        None => Some(s.tools.foreground),
+        Some(Value::String(h)) => crate::commands::parse_hex(h),
+        Some(Value::Array(a)) => {
+            let c: Option<Vec<f32>> = a.iter().map(|x| x.as_f64().filter(|x| (0.0..=1.0).contains(x)).map(|x| x as f32)).collect();
+            match c.as_deref() {
+                Some(&[r, g, b]) => Some([r, g, b, 1.0]),
+                Some(&[r, g, b, a]) => Some([r, g, b, a]),
+                _ => None,
+            }
+        }
+        Some(_) => None,
+    };
+    let paint = paint.ok_or_else(|| bad(cmd, "`color` must be \"#rrggbb\" or [r, g, b, a?] in 0..1"))?;
+    s.tools.mixer.load(paint);
+    s.tools.mixer.color = Some(s.tools.foreground);
+    Ok(serde_json::to_value(&s.tools.mixer).unwrap_or_default())
+}
+
+/// `brush.mixer.clean`: Clean Brush empties the Mixer Brush. The next stroke starts empty unless
+/// a different color is chosen first. Returns the paint the brush now carries.
+fn mixer_clean(s: &mut Session, _: &Value) -> Result<Value> {
+    s.tools.mixer.clean();
+    s.tools.mixer.color = Some(s.tools.foreground);
+    Ok(serde_json::to_value(&s.tools.mixer).unwrap_or_default())
 }
 
 /// `paint.colorReplacement`'s stroke and settings. The replacement colour is the brush colour
@@ -889,13 +937,19 @@ fn presets_delete(s: &mut Session, p: &Value) -> Result<Value> {
     if s.tools.presets.len() == before {
         return Err(bad(cmd, format!("no brush preset named `{name}`")));
     }
-    if s.tools.current_preset.as_ref().is_some_and(|c| c.eq_ignore_ascii_case(&name)) {
+    forget_deleted_preset(s, &name);
+    Ok(json!({ "count": s.tools.presets.len() }))
+}
+
+/// After preset `name` was deleted (here or in Edit › Presets › Preset Manager): the current
+/// brush no longer comes from a preset, and the library is saved.
+pub(crate) fn forget_deleted_preset(s: &mut Session, name: &str) {
+    if s.tools.current_preset.as_ref().is_some_and(|c| c.eq_ignore_ascii_case(name)) {
         s.tools.current_preset = None;
         // The remembered brush names the preset it was picked from: the name went away.
         s.tools.brush_changed();
     }
     s.brush_presets_changed();
-    Ok(json!({ "count": s.tools.presets.len() }))
 }
 
 /// Overwrite an existing preset with the current brush (or the current brush plus a `brush`
@@ -959,9 +1013,16 @@ fn define_from_selection(s: &mut Session, p: &Value) -> Result<Value> {
     }
     // Paint amount = darkness × alpha × selection (black = full paint, like Photoshop).
     let (w, h) = (area.width() as usize, area.height() as usize);
-    let mut v = vec![0.0f32; w * h];
+    // The sampled tip is one f32 buffer over the whole selection; a large selection must fail
+    // gracefully instead of aborting the process on allocation, so reserve it fallibly. The
+    // multiply is checked too: on a 32-bit target (wasm32) it can overflow where the rest of
+    // this command is already fallible.
+    let len = w.checked_mul(h).ok_or_else(|| crate::allocation::error("defining a brush from the selection", "requested size overflowed"))?;
+    let mut v = crate::allocation::filled(len, 0.0, "defining a brush from the selection")?;
     let sc = sel.channels();
-    let sv = sel.read_region(area);
+    // The selection mask is a second buffer of the same size; it must fail gracefully too
+    // (review of #5469), so read it through the fallible allocator.
+    let sv = crate::allocation::read_region(sel, area, "defining a brush from the selection")?;
     for y in 0..h {
         for x in 0..w {
             let c = surf.rgba(area.x0 + x as i32, area.y0 + y as i32);
@@ -1226,11 +1287,13 @@ pub fn specs() -> Vec<CommandSpec> {
         spec!(
             "paint.mixerBrush",
             "Mixer Brush",
-            r##"{"points":[…],"brush":{…}?,"preset":name?,"size":0.5..5000 px?,"wet":0..100=brush.mixer.wet,"load":0..100=brush.mixer.load,"mix":0..100=brush.mixer.mix,"flow":0..100=brush.mixer.flow,"color":"#rrggbb"?=foreground,"sampleAllLayers":bool=brush.mixer.sampleAllLayers,"cleanAfterStroke":bool=true,"loadAfterStroke":bool=true,"seed":u64?}"##,
+            r##"{"points":[…],"brush":{…}?,"preset":name?,"size":0.5..5000 px?,"wet":0..100=brush.mixer.wet,"load":0..100=brush.mixer.load,"mix":0..100=brush.mixer.mix,"flow":0..100=brush.mixer.flow,"color":"#rrggbb"?=foreground (a color other than the one recorded by the last stroke, load or clean loads it first; a load or clean records the foreground),"sampleAllLayers":bool=brush.mixer.sampleAllLayers,"cleanAfterStroke":bool=brush.mixer.cleanAfterStroke (empty the brush after the stroke),"loadAfterStroke":bool=brush.mixer.loadAfterStroke (load the brush with `color` after the stroke),"seed":u64?}"##,
             has_paintable,
             mixer_brush,
             true
         ),
+        spec!("brush.mixer.load", "Load Mixer Brush", r##"{"color":"#rrggbb"|[r,g,b,a?] 0..1?=foreground}"##, always, mixer_load, true),
+        spec!("brush.mixer.clean", "Clean Mixer Brush", "{}", always, mixer_clean, true),
         spec!(
             "paint.colorReplacement",
             "Color Replacement",

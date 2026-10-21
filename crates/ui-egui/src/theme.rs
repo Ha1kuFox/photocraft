@@ -1246,11 +1246,8 @@ mod tests {
             // Noctalia overlays its live file at apply() time, so the published tokens match
             // that file when it parses (e.g. on a machine with noctalia running) and the
             // static fallback otherwise.
-            let expected_tokens = if kind == ThemeKind::Noctalia {
-                super::noctalia::tokens().unwrap_or_else(|| Tokens::for_kind(kind))
-            } else {
-                Tokens::for_kind(kind)
-            };
+            let expected_tokens =
+                if kind == ThemeKind::Noctalia { super::noctalia::tokens().unwrap_or_else(|| Tokens::for_kind(kind)) } else { Tokens::for_kind(kind) };
             for appearance in [Some(egui::Theme::Light), Some(egui::Theme::Dark), None] {
                 ctx.run_ui(egui::RawInput { system_theme: appearance, ..Default::default() }, |_| {}).textures_delta.clear();
                 assert_eq!(Tokens::get(&ctx), expected_tokens);
@@ -1485,11 +1482,7 @@ pub mod noctalia {
             return env("APPDATA").filter(|a| !a.is_empty()).map(|a| PathBuf::from(a).join("Photocraft"));
         }
         let home = env("HOME").filter(|h| !h.is_empty()).map(PathBuf::from);
-        env("XDG_CONFIG_HOME")
-            .filter(|x| !x.is_empty())
-            .map(PathBuf::from)
-            .or_else(|| home.map(|h| h.join(".config")))
-            .map(|c| c.join("photocraft"))
+        env("XDG_CONFIG_HOME").filter(|x| !x.is_empty()).map(PathBuf::from).or_else(|| home.map(|h| h.join(".config"))).map(|c| c.join("photocraft"))
     }
 
     /// Full path of the live tokens file.
@@ -1534,10 +1527,7 @@ pub mod noctalia {
         #[test]
         fn dir_mirrors_the_desktop_app() {
             assert_eq!(dir(env_of(&[("PHOTOCRAFT_CONFIG_DIR", "/custom")])), Some(PathBuf::from("/custom")));
-            assert_eq!(
-                dir(env_of(&[("XDG_CONFIG_HOME", "/x"), ("HOME", "/h")])),
-                Some(PathBuf::from("/x/photocraft"))
-            );
+            assert_eq!(dir(env_of(&[("XDG_CONFIG_HOME", "/x"), ("HOME", "/h")])), Some(PathBuf::from("/x/photocraft")));
             assert_eq!(dir(env_of(&[("HOME", "/h")])), Some(PathBuf::from("/h/.config/photocraft")));
             assert_eq!(dir(env_of(&[])), None);
         }
@@ -1648,9 +1638,7 @@ pub mod live {
         /// `PHOTOCRAFT_THEME_FILE` in debug) this is a cheap no-op that requests no repaint.
         pub fn poll(&mut self, ctx: &egui::Context, kind: super::ThemeKind) -> bool {
             // A manually pointed file (debug) wins over the theme's own live file.
-            let path = self.path.clone().or_else(|| {
-                (kind == super::ThemeKind::Noctalia).then(super::noctalia::path).flatten()
-            });
+            let path = self.path.clone().or_else(|| (kind == super::ThemeKind::Noctalia).then(super::noctalia::path).flatten());
             let Some(path) = path else { return false };
             let now = ctx.input(|i| i.time);
             if now - self.last_check < 0.4 {
@@ -1699,10 +1687,8 @@ pub mod live {
         #[test]
         fn overrides_apply_and_report_unknown() {
             let mut t = Tokens::for_kind(ThemeKind::Pro);
-            let unknown = apply_overrides(
-                &mut t,
-                &serde_json::json!({"card": "#102030", "radius": 9, "histogram_bg": "#010203", "histogram_level": 200, "nope": 1}),
-            );
+            let unknown =
+                apply_overrides(&mut t, &serde_json::json!({"card": "#102030", "radius": 9, "histogram_bg": "#010203", "histogram_level": 200, "nope": 1}));
             assert_eq!(t.card, Color32::from_rgb(16, 32, 48));
             assert_eq!(t.radius, 9.0);
             assert_eq!(t.histogram_bg, Color32::from_rgb(1, 2, 3));

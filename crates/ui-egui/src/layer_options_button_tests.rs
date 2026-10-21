@@ -1,7 +1,7 @@
 //! The Layers header's "···" button: pens can't right-click, so it opens the row menu for
 //! the selected layer.
 
-use egui::{vec2};
+use egui::vec2;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;

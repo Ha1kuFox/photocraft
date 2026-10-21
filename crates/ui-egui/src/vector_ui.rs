@@ -978,6 +978,14 @@ pub(crate) fn draw_handle(painter: &egui::Painter, anchor: Pos2, handle: Pos2, a
     painter.circle_filled(handle, 3.0, accent);
 }
 
+/// Does `tool` draw the anchor squares of the paths it can edit? Path Selection does, and so do
+/// the Pen tools: as in Photoshop, a path finished with Enter or by closing it keeps its anchors
+/// on screen, so it can still be edited (⌘/Ctrl-drag, Auto Add/Delete) (#6884, #4716).
+pub(crate) fn shows_anchors(tool: Tool) -> bool {
+    // Add/Delete Anchor Point and Convert Point draw Direct Selection's overlay instead.
+    matches!(tool, Tool::PathSelection | Tool::Pen | Tool::FreeformPen | Tool::CurvaturePen)
+}
+
 /// Work path / active shape path outlines, anchors, and the pen path in progress.
 pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, doc: &Document) {
     let tool = app.ui.tool;
@@ -1001,20 +1009,21 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
             crate::anchor_tools::draw_hover(app, painter, &to_scr, accent, painter.ctx().input(|i| i.modifiers));
         }
     } else if paths {
-        // Paths remain visible as outlines with any tool. Path Selection adds anchor squares; Direct
-        // Selection has its own overlay above.
+        // Paths remain visible as outlines with any tool. Path Selection and the Pen tools add
+        // anchor squares; Direct Selection has its own overlay above.
+        let anchors = shows_anchors(tool);
         if let Some(wp) = &doc.work_path {
-            draw_path(wp, tool == Tool::PathSelection);
+            draw_path(wp, anchors);
         }
         let st = app.session.active();
         if let Some(l) = st.and_then(|s| s.active_layer.and_then(|id| s.doc.layer(id)))
             && let LayerContent::Shape(sh) = &l.content
         {
-            draw_path(&sh.path, tool == Tool::PathSelection);
+            draw_path(&sh.path, anchors);
         }
         // A targeted vector mask shows its path with any tool (#196).
         if let Some((_, p)) = targeted_vector_mask(app) {
-            draw_path(&p, tool == Tool::PathSelection);
+            draw_path(&p, anchors);
         }
         crate::corner_radius::draw(app, painter, &to_scr, accent);
     }
@@ -2034,6 +2043,30 @@ mod tests {
         });
         out.textures_delta.clear();
         out.shapes.len()
+    }
+
+    #[test]
+    fn pen_keeps_anchors_of_a_finished_path() {
+        // #6884: a path finished with Enter, or by closing it, lost its anchor squares while the
+        // Pen stayed active, so it looked gone and could not be edited.
+        let ctx = egui::Context::default();
+        let mut app = app();
+        app.ui.tool = Tool::Pen;
+        let knots = vec![[[10.0, 10.0]; 3], [[80.0, 10.0]; 3], [[80.0, 80.0]; 3]];
+        app.ui.pen = Some(PenPath { knots, ..Default::default() });
+        pen_commit(&mut app, true);
+        assert!(app.ui.pen.is_none());
+        assert!(app.session.active().unwrap().doc.work_path.is_some());
+        let with_pen = overlay_shapes(&app, &ctx);
+        app.ui.tool = Tool::Brush;
+        let outline_only = overlay_shapes(&app, &ctx);
+        assert!(outline_only > 0, "the outline is drawn with any tool");
+        // Each of the three anchors adds its square (fill and stroke).
+        assert!(with_pen >= outline_only + 3, "Pen draws the anchors: {with_pen} vs {outline_only}");
+        for tool in [Tool::Pen, Tool::FreeformPen, Tool::CurvaturePen, Tool::PathSelection] {
+            assert!(shows_anchors(tool), "{tool:?}");
+        }
+        assert!(!shows_anchors(Tool::Brush) && !shows_anchors(Tool::Move));
     }
 
     #[test]

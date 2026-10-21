@@ -262,15 +262,7 @@ impl Region {
 /// so clicking near a line still fills. Note the pairing: dilation also insets the fill by up
 /// to that radius where there are no gaps — grow the result with [`dilate_region`] (Paint
 /// Bucket "Expand") to reach the real lines again. Non-contiguous (global) matches ignore it.
-pub fn wand_region(
-    img: &[[u8; 4]],
-    area: Rect,
-    seed: (i32, i32),
-    tolerance: f32,
-    contiguous: bool,
-    anti_alias: bool,
-    close_gap: u32,
-) -> Option<Region> {
+pub fn wand_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), tolerance: f32, contiguous: bool, anti_alias: bool, close_gap: u32) -> Option<Region> {
     if !area.contains(seed.0, seed.1) {
         return None;
     }

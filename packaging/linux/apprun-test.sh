@@ -129,4 +129,27 @@ out="$(APPIMAGE="$odd" "$APPDIR/AppRun" x)" || fail "launch with an odd path exi
 [ "$out" = "stub: x" ] || fail "odd path: $out"
 [ ! -e "$XDG_DATA_HOME" ] || fail "integrated an AppImage path that needs escaping"
 
+# 12. AM / AppMan (#6392): a photocraft-AM.desktop launcher in the user's applications
+#     dir owns the menu entry. AppRun removes its own entry left from an earlier run,
+#     writes no second one and still installs the icons.
+rm -rf "$XDG_DATA_HOME"
+"$APPDIR/AppRun" >/dev/null || fail "launch before AM install exited non-zero"
+[ -f "$DESKTOP" ] || fail "no desktop entry before AM install"
+am_desktop="$XDG_DATA_HOME/applications/photocraft-AM.desktop"
+printf '[Desktop Entry]
+Type=Application
+Name=PhotoCraft
+Exec=photocraft %%F
+Icon=%s
+' "$APP_ID" >"$am_desktop"
+"$APPDIR/AppRun" >/dev/null || fail "launch with AM launcher exited non-zero"
+[ ! -e "$DESKTOP" ] || fail "duplicate desktop entry kept alongside AM launcher (#6392)"
+[ -f "$am_desktop" ] || fail "AM launcher was removed"
+[ -f "$XDG_DATA_HOME/icons/hicolor/256x256/apps/$APP_ID.png" ] || fail "icons missing with AM launcher"
+
+# 13. Once AM removes its launcher, AppRun writes its own entry again.
+rm -f "$am_desktop"
+"$APPDIR/AppRun" >/dev/null || fail "launch after AM removal exited non-zero"
+[ -f "$DESKTOP" ] || fail "no desktop entry after the AM launcher was removed"
+
 echo "AppRun desktop integration ok"

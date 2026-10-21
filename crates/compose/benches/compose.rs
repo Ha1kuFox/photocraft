@@ -53,7 +53,8 @@ fn benches(c: &mut Criterion) {
     let doc = five_layer_doc(6016);
     let mut g = c.benchmark_group("compose");
     g.sample_size(10);
-    g.bench_function("flatten_6016_5_layers", |b| b.iter(|| photocraft_compose::flatten(&doc)));    let masks = mask_heavy_doc();
+    g.bench_function("flatten_6016_5_layers", |b| b.iter(|| photocraft_compose::flatten(&doc)));
+    let masks = mask_heavy_doc();
     g.bench_function("flatten_2048_20_masked_layers", |b| b.iter(|| photocraft_compose::flatten(&masks)));
     let stroke = photocraft_paint::Stroke {
         brush: photocraft_paint::BrushSettings { size: 60.0, hardness: 0.5, ..Default::default() },
@@ -100,9 +101,7 @@ fn gradient_drag_frame(g: &mut criterion::BenchmarkGroup<criterion::measurement:
         })
     });
     // Same document without the gradient layer: the composite baseline the gradient adds to.
-    g.bench_function("gradient_drag_baseline_24mp_display", |b| {
-        b.iter(|| photocraft_compose::render_reduced(&doc, 1600, 1067))
-    });
+    g.bench_function("gradient_drag_baseline_24mp_display", |b| b.iter(|| photocraft_compose::render_reduced(&doc, 1600, 1067)));
     // Split composite: the static part once (cached across iterations), the gradient group
     // fresh — the live-drag path (`render_reduced_split`).
     g.bench_function("gradient_drag_split_24mp_display", |b| {

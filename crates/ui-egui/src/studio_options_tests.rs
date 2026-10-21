@@ -13,10 +13,7 @@ fn options_bar_harness(tool: Tool) -> egui_kittest::Harness<'static, PhotocraftA
 }
 
 /// Options-bar harness in an explicit theme.
-fn options_bar_harness_themed(
-    tool: Tool,
-    theme: crate::theme::ThemeKind,
-) -> egui_kittest::Harness<'static, PhotocraftApp> {
+fn options_bar_harness_themed(tool: Tool, theme: crate::theme::ThemeKind) -> egui_kittest::Harness<'static, PhotocraftApp> {
     let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
     app.session.prefs.edit(|p| p.interface.language = "en".into());
     app.run("file.new", json!({"width": 40, "height": 30})).unwrap();

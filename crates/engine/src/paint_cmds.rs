@@ -90,14 +90,11 @@ fn bucket(s: &mut Session, p: &Value) -> Result<Value> {
         }
         (SampleSource::Layer(id), true) => {
             let d = s.active().ok_or(EngineError::NoDocument)?;
-            let layer = d.doc.layer(id).ok_or_else(|| EngineError::BadParams {
-                cmd: "paint.bucket".into(),
-                msg: format!("reference layer {id:?} not found"),
-            })?;
-            let surf = layer.surface().ok_or_else(|| EngineError::BadParams {
-                cmd: "paint.bucket".into(),
-                msg: format!("reference layer {} has no pixels to sample", layer.name),
-            })?;
+            let layer =
+                d.doc.layer(id).ok_or_else(|| EngineError::BadParams { cmd: "paint.bucket".into(), msg: format!("reference layer {id:?} not found") })?;
+            let surf = layer
+                .surface()
+                .ok_or_else(|| EngineError::BadParams { cmd: "paint.bucket".into(), msg: format!("reference layer {} has no pixels to sample", layer.name) })?;
             let area = d.doc.bounds();
             wand_region(&photocraft_algo::selection::rgba8_image(surf, area), area, (x, y), tol, contiguous, aa, close_gap)
         }
@@ -355,7 +352,8 @@ mod tests {
         s.execute("paint.bucket", json!({"x": 2, "y": 2, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sampleAllLayers": true})).unwrap();
         assert_eq!(px(&s, 10, 2), vec![0.0; 4], "the solid wall stops the fill");
         let mut s = bucket_layers(8).0;
-        s.execute("paint.bucket", json!({"x": 2, "y": 2, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sampleAllLayers": true, "expand": 2})).unwrap();
+        s.execute("paint.bucket", json!({"x": 2, "y": 2, "color": "#ff0000", "antiAlias": false, "tolerance": 0, "sampleAllLayers": true, "expand": 2}))
+            .unwrap();
         assert_eq!(px(&s, 10, 2), vec![1.0, 0.0, 0.0, 1.0], "expand reaches 2 px past the edge");
         assert_eq!(px(&s, 11, 2), vec![1.0, 0.0, 0.0, 1.0]);
         assert_eq!(px(&s, 12, 2), vec![0.0; 4], "expand stops where it should");
