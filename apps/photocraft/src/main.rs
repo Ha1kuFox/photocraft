@@ -565,6 +565,11 @@ fn main() -> eframe::Result {
     let tablet_monitor = std::cell::OnceCell::new();
     #[cfg(target_os = "macos")]
     let tablet_monitor = &tablet_monitor;
+    // The Wayland tablet reader; it reads winit's display, so it must live until the event loop returns.
+    #[cfg(target_os = "linux")]
+    let wayland_tablet = std::cell::OnceCell::new();
+    #[cfg(target_os = "linux")]
+    let wayland_tablet = &wayland_tablet;
     // The Windows pointer message hook; dropping it unhooks when the event loop returns.
     #[cfg(target_os = "windows")]
     let tablet_monitor_win = std::cell::OnceCell::new();
@@ -866,6 +871,10 @@ fn main() -> eframe::Result {
             }
             #[cfg(target_os = "linux")]
             tablet::spawn_x11(&app.stylus.feed, display);
+            #[cfg(target_os = "linux")]
+            if let Some(reader) = tablet::spawn_wayland(cc, &app.stylus.feed, display) {
+                let _ = wayland_tablet.set(reader);
+            }
             app.services.right_button_down = tablet::right_button_service();
             app.services.pen_end = tablet::pen_end_service();
             // Paths on the command line (Linux/Windows file associations, `photocraft a.psd`).
