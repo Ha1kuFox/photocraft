@@ -377,7 +377,10 @@ fn correct_stroke(s: &mut Session, p: &Value) -> Result<Value> {
         "Brush Tool"
     };
     let auto_erase = pencil && flag(p, "autoErase", false);
-    let (bg, fg) = (s.tools.background, brush.color);
+    let raw_bg = s.tools.background;
+    let bg_inks = s.tools.picked_role_cmyk(1);
+    let bg = crate::color_cmds::swatch_in_doc(s, raw_bg);
+    let fg = brush.color;
     let cmyk = doc_cmyk_space(s);
     // Entry 1: the raw stroke's pixels, taken from the live stroke.
     let dmg = photocraft_color::convert::with_cmyk_space(cmyk.as_ref(), || {
@@ -396,12 +399,14 @@ fn correct_stroke(s: &mut Session, p: &Value) -> Result<Value> {
         s.edit("Straighten", |doc, _| {
             let sel = doc.selection.clone();
             let (surf, lock) = crate::channel_cmds::target_surface(doc, id, p)?;
-            if !l.bounds.is_empty() {
-                surf.write_region(l.bounds, &l.pre.read_region(l.bounds));
+            if !l.bounds.is_empty()
+                && let Some(pre) = &l.pre
+            {
+                surf.write_region(l.bounds, &pre.read_region(l.bounds));
             }
-            erase_locked(&mut fitted_brush, lock, bg);
+            erase_locked(&mut fitted_brush, lock, bg, bg_inks);
             if auto_erase {
-                apply_auto_erase(&mut fitted_brush, surf, fitted.first(), fg, bg);
+                apply_auto_erase(&mut fitted_brush, surf, fitted.first(), fg, raw_bg, bg_inks);
             }
             Ok(photocraft_paint::render_stroke(surf, &fitted_brush, &fitted, sel.as_ref(), lock, zoom))
         })
@@ -782,6 +787,7 @@ impl LiveStroke {
             points: self.points,
             surface: surf.clone(),
             bounds,
+            pre: Some(self.pre),
         })
     }
 

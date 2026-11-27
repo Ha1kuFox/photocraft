@@ -301,6 +301,10 @@ pub struct LiveCommit {
     pub points: Vec<StrokePoint>,
     pub surface: Surface,
     pub bounds: Rect,
+    /// The target surface before the live stroke. `paint.correctStroke` restores the raw
+    /// stroke's bounds from it before rendering the fitted stroke. Only the Brush/Pencil live
+    /// stroke keeps it; the other producers never offer a correctable stroke.
+    pub pre: Option<Surface>,
 }
 
 impl LiveCommit {

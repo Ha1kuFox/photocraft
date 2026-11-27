@@ -797,6 +797,7 @@ impl LiveDab {
             points: self.points,
             surface,
             bounds: self.bounds,
+            pre: None,
         })
     }
 }

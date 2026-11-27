@@ -1147,6 +1147,7 @@ fn every_job_terminal_path_drops_a_live_commit_stroke() {
             points,
             surface,
             bounds,
+            pre: None,
         });
         let gate = Arc::new(AtomicBool::new(false));
         let worker_gate = gate.clone();

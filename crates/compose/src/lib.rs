@@ -35,6 +35,7 @@ pub mod proxy;
 pub mod psblend;
 pub mod shape_split;
 pub mod smart_mix;
+pub mod split;
 mod uniform;
 pub mod viewport;
 
@@ -83,6 +84,7 @@ pub use reduced::{
     PROXY_THUMBNAIL_PIXELS, render_reduced, render_reduced_by, render_reduced_damage, render_reduced_rect, thumbnail, thumbnail_buffer, thumbnail_proxy,
     thumbnail_size,
 };
+pub use split::{blend_over, preview_split, render_reduced_preview, render_reduced_split};
 #[cfg(test)]
 use reduced::{ReducedStats, render_reduced_in_bands, render_reduced_with};
 use render::in_blend_space;

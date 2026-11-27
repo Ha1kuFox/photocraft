@@ -401,6 +401,56 @@ pub fn gradient_t(style: GradientStyle, angle: f32, scale: f32, reverse: bool, o
     if reverse { 1.0 - t } else { t }
 }
 
+/// Per-bounds half of [`gradient_t`]: everything the pixel loop does not vary. Kept as a
+/// separate API so the gradient fill's hot loop and the reduced-space preview hoist the same
+/// invariants out of every pixel (see [`gradient_t_eval`]).
+#[allow(clippy::too_many_arguments)]
+pub fn gradient_t_prepare(style: GradientStyle, angle: f32, scale: f32, reverse: bool, offset: (f32, f32), bounds: Rect) -> PreparedGradientT {
+    let w = bounds.width().max(1) as f32;
+    let h = bounds.height().max(1) as f32;
+    let cx = bounds.x0 as f32 + w / 2.0 + offset.0 * w;
+    let cy = bounds.y0 as f32 + h / 2.0 + offset.1 * h;
+    let (s, c) = angle.to_radians().sin_cos();
+    // `gradient_units` inlined on the same trig: the bounds' extent along the angle.
+    let (chord, len) = gradient_units(angle, w, h);
+    let (chord, len) = (chord * scale.max(1e-3), len * scale.max(1e-3));
+    // Linear / Reflected sample the pixel's top-left corner, half a pixel before its centre.
+    let corner = 0.5 * (c - s);
+    PreparedGradientT { style, angle, reverse, cx, cy, s, c, chord, len, corner }
+}
+
+/// Loop-invariant inputs of [`gradient_t`], from [`gradient_t_prepare`].
+#[derive(Clone, Copy, Debug)]
+pub struct PreparedGradientT {
+    style: GradientStyle,
+    angle: f32,
+    reverse: bool,
+    cx: f32,
+    cy: f32,
+    s: f32,
+    c: f32,
+    chord: f32,
+    len: f32,
+    corner: f32,
+}
+
+/// Per-pixel half of [`gradient_t`]: the same operations in the same order, so every caller
+/// (fills, vectors, editor previews) keeps bit-identical values.
+pub fn gradient_t_eval(p: &PreparedGradientT, x: f32, y: f32) -> f32 {
+    let (dx, dy) = (x - p.cx, y - p.cy);
+    let along = dx * p.c - dy * p.s;
+    let across = dx * p.s + dy * p.c;
+    let mut t = match p.style {
+        GradientStyle::Linear => (along - p.corner) / p.chord + 0.5,
+        GradientStyle::Reflected => ((along - p.corner) / (p.chord / 2.0)).abs(),
+        GradientStyle::Radial => (dx * dx + dy * dy).sqrt() / (p.len / 2.0),
+        GradientStyle::Diamond => (along.abs() + across.abs()) / (p.len / 2.0),
+        GradientStyle::Angle => ((p.angle.to_radians() - (-dy).atan2(dx)) / std::f32::consts::TAU).rem_euclid(1.0),
+    };
+    t = t.clamp(0.0, 1.0);
+    if p.reverse { 1.0 - t } else { t }
+}
+
 /// Samples colour and opacity stops at `t`.
 pub fn sample_gradient(g: &Gradient, t: f32) -> [f32; 4] {
     PreparedGradient::new(g).sample(t)

@@ -326,6 +326,7 @@ impl LiveMixer {
             points: self.points,
             surface,
             bounds,
+            pre: None,
             mixer: Some((self.original_state, after)),
         });
         Ok(params)
