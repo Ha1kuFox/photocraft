@@ -213,8 +213,8 @@ impl ThemePrefs {
     fn change_from(&self, before: &ThemePrefs) -> SelectionChange {
         let id = |value: &str| ThemeId::parse(value).ok();
         SelectionChange {
-            theme_dark: (self.dark != before.dark).then(|| id(&self.dark)).flatten(),
-            theme_light: (self.light != before.light).then(|| id(&self.light)).flatten(),
+            theme_dark: (self.dark != before.dark && !is_app_owned_theme(&self.dark)).then(|| id(&self.dark)).flatten(),
+            theme_light: (self.light != before.light && !is_app_owned_theme(&self.light)).then(|| id(&self.light)).flatten(),
             mode: (self.mode != before.mode).then(|| mode_choice(self.mode)),
             size: (self.size != before.size).then(|| suite_size(self.size)),
             ..SelectionChange::default()
@@ -257,6 +257,12 @@ fn suite_size(density: UiDensity) -> Size {
 const DEFAULT_DARK: &str = "craft.artcraft";
 /// PhotoCraft's theme in the light mode when nobody chose one: Pro (Light).
 const DEFAULT_LIGHT: &str = "craft.pro";
+
+/// A theme whose definition lives in PhotoCraft, not in the shared suite library. The suite
+/// store refuses an id it has no theme file for, so these ids must stay out of its selection.
+fn is_app_owned_theme(id: &str) -> bool {
+    id == crate::theme::NOCTALIA_THEME_ID
+}
 
 /// What PhotoCraft shows for each suite field nobody has chosen: Pro (Medium Gray) in the dark
 /// mode, Pro in the light, and the dark mode, with the Creative component set.
@@ -450,7 +456,7 @@ impl Framework {
         let mine = ThemePrefs::of(session.prefs());
         let suite = moved.then(|| ThemePrefs::of_suite(&self.suite.shown()));
         let previous = self.synced.take();
-        let agreed = match &previous {
+        let mut agreed = match &previous {
             _ if !self.suite.selection_read() => mine.clone(),
             _ if !self.started => {
                 self.started = true;
@@ -460,12 +466,12 @@ impl Framework {
                 let mut change = SelectionChange::default();
                 match &chosen.theme_dark {
                     Some(id) => start.dark = id.as_str().to_owned(),
-                    None if mine.dark != blank.dark => change.theme_dark = ThemeId::parse(&mine.dark).ok(),
+                    None if mine.dark != blank.dark && !is_app_owned_theme(&mine.dark) => change.theme_dark = ThemeId::parse(&mine.dark).ok(),
                     None => {}
                 }
                 match &chosen.theme_light {
                     Some(id) => start.light = id.as_str().to_owned(),
-                    None if mine.light != blank.light => change.theme_light = ThemeId::parse(&mine.light).ok(),
+                    None if mine.light != blank.light && !is_app_owned_theme(&mine.light) => change.theme_light = ThemeId::parse(&mine.light).ok(),
                     None => {}
                 }
                 match chosen.mode {
@@ -491,6 +497,15 @@ impl Framework {
             },
             None => mine.clone(),
         };
+        // The shared suite has no theme file for PhotoCraft's own themes. Keep those ids in the
+        // preferences even when the suite's selection moves: syncing the suite's choice back
+        // would drop the live desktop theme on the next frame.
+        if is_app_owned_theme(&mine.dark) {
+            agreed.dark = mine.dark.clone();
+        }
+        if is_app_owned_theme(&mine.light) {
+            agreed.light = mine.light.clone();
+        }
         if agreed != mine {
             session.edit_prefs(|p| {
                 p.interface.appearance_mode = agreed.mode;

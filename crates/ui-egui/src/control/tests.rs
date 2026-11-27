@@ -929,6 +929,30 @@ fn ui_set_theme_takes_ids_and_pre_id_names_and_refuses_unknown_themes() {
     }
 }
 
+/// PhotoCraft's live desktop theme is app-owned: the shared suite has no theme file for it, so
+/// picking it must stay in the preferences instead of being reverted by the suite's selection.
+#[test]
+fn ui_set_noctalia_stays_through_suite_sync() {
+    use crate::theme::NOCTALIA_THEME_ID;
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    let ctx = app.ctx().clone();
+    // Let the suite choose an ordinary theme first: that is the state a desktop app starts in.
+    assert_eq!(call(&mut app, &ctx, "ui.set", json!({"theme": "craft.studio"}))["ok"], true);
+    for _ in 0..4 {
+        app.framework.sync_theme(&mut app.session);
+        crate::prefs_ui::sync_appearance(&mut app, &ctx);
+    }
+    assert_eq!(app.session.prefs().interface.dark_theme, "craft.studio");
+
+    assert_eq!(call(&mut app, &ctx, "ui.set", json!({"theme": "noctalia"}))["ok"], true);
+    for _ in 0..4 {
+        app.framework.sync_theme(&mut app.session);
+        crate::prefs_ui::sync_appearance(&mut app, &ctx);
+    }
+    assert_eq!(app.session.prefs().interface.dark_theme, NOCTALIA_THEME_ID);
+    assert_eq!(app.ui.theme.id().as_str(), NOCTALIA_THEME_ID);
+}
+
 /// `ui.set {theme}` with a library theme the suite has in its library but hasn't loaded picks it
 /// for the slot and answers ok with a note; the look stays until the suite's read shows it.
 #[test]
