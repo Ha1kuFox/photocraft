@@ -25,34 +25,8 @@ macro_rules! tl {
     };
 }
 
-pub mod actions;
-pub mod adjust_dialog;
-pub mod adjust_editors;
-pub mod adjust_preview;
-pub mod adjust_ui;
-mod alt_grab;
-pub mod analysis_ui;
-pub mod anchor_tools;
-pub mod artboard_tool;
-pub mod artboard_ui;
-mod blend_keys;
-pub(crate) mod blend_preview;
-mod brand;
-pub(crate) mod brush_cursor;
-pub mod brush_panel;
-pub mod brush_picker;
-pub mod brush_preset_dialog;
-pub mod brush_preview;
-pub mod brush_resize;
-pub mod brush_sections;
-pub mod brushes_tab;
+mod brush_mode_menu;
 pub mod bucket_ui;
-pub(crate) mod cam_preview;
-mod cam_transform;
-mod camera_raw_detail_ui;
-mod camera_raw_preview_ui;
-mod camera_raw_scope_ui;
-pub mod camera_raw_ui;
 pub mod canvas;
 mod channel_titles;
 #[cfg(not(target_arch = "wasm32"))]
@@ -1084,6 +1058,12 @@ mod patch_tool_history_names_tests;
 #[cfg(test)]
 mod polygon_lasso_tests;
 
+#[cfg(test)]
+mod bucket_ui_tests;
+#[cfg(test)]
+mod hold_correct_tests;
+#[cfg(test)]
+mod layer_options_button_tests;
 #[cfg(test)]
 mod studio_options_tests;
 
