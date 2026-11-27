@@ -84,7 +84,6 @@ pub use reduced::{
     PROXY_THUMBNAIL_PIXELS, render_reduced, render_reduced_by, render_reduced_damage, render_reduced_rect, thumbnail, thumbnail_buffer, thumbnail_proxy,
     thumbnail_size,
 };
-pub use split::{blend_over, preview_split, render_reduced_preview, render_reduced_split};
 #[cfg(test)]
 use reduced::{ReducedStats, render_reduced_in_bands, render_reduced_with};
 use render::in_blend_space;
@@ -95,6 +94,7 @@ pub use render::{
     BAND_PIXELS, MAX_RENDER_PIXELS, RenderBandsError, band_rows_for, cmyk_space, composite_to_surface, composite_to_surface_with_interrupt, flatten,
     flatten_to_surface, render, render_bands, render_layer, render_layer_in, render_tiled, try_render_bands,
 };
+pub use split::{blend_over, preview_split, render_reduced_preview, render_reduced_split};
 
 /// Straight-alpha RGBA float buffer covering a rectangle.
 ///

@@ -113,14 +113,11 @@ fn bucket(s: &mut Session, p: &Value) -> Result<Value> {
         }
         (SampleSource::Layer(id), true) => {
             let d = s.active().ok_or(EngineError::NoDocument)?;
-            let layer = d.doc.layer(id).ok_or_else(|| EngineError::BadParams {
-                cmd: "paint.bucket".into(),
-                msg: format!("reference layer {id:?} not found"),
-            })?;
-            let surf = layer.surface().ok_or_else(|| EngineError::BadParams {
-                cmd: "paint.bucket".into(),
-                msg: format!("reference layer {} has no pixels to sample", layer.name),
-            })?;
+            let layer =
+                d.doc.layer(id).ok_or_else(|| EngineError::BadParams { cmd: "paint.bucket".into(), msg: format!("reference layer {id:?} not found") })?;
+            let surf = layer
+                .surface()
+                .ok_or_else(|| EngineError::BadParams { cmd: "paint.bucket".into(), msg: format!("reference layer {} has no pixels to sample", layer.name) })?;
             let area = d.doc.bounds();
             wand_region_close_gap(&rgba8_image(surf, area), area, (x, y), tol, contiguous, aa, close_gap)
         }

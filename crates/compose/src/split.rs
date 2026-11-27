@@ -2,10 +2,10 @@
 //! the static part once and only the changed group fresh. Preview-only; the release commit
 //! always renders the exact path.
 
+use crate::psblend as blend;
 use crate::{Buffer, render_reduced};
 use photocraft_color::BlendMode;
 use photocraft_doc::{Document, LayerContent, LayerId};
-use crate::psblend as blend;
 
 /// Whether the stack splits exactly at `k` (top = `layers[k..]`): the boundary blends Normal
 /// and is no group, no knockout anywhere (deep knockouts reveal the document outside the

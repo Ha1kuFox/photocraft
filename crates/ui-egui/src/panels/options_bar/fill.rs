@@ -88,11 +88,8 @@ pub(super) fn members(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
     check(ui, tl!("Anti-alias"), &mut o.anti_alias);
     check(ui, tl!("Contiguous"), &mut o.contiguous);
-    let modes = [
-        Entry::new(0u8, tl!("Current Layer").to_owned()),
-        Entry::new(1u8, tl!("All Layers").to_owned()),
-        Entry::new(2u8, tl!("Reference Layer").to_owned()),
-    ];
+    let modes =
+        [Entry::new(0u8, tl!("Current Layer").to_owned()), Entry::new(1u8, tl!("All Layers").to_owned()), Entry::new(2u8, tl!("Reference Layer").to_owned())];
     let mut mode: u8 = match o.bucket_sample.as_str() {
         "all" => 1,
         "layer" => 2,

@@ -1180,11 +1180,7 @@ pub fn apply(ctx: &egui::Context, theme: &AppTheme) {
     // file keeps the static Studio fallback (never a panic, never an empty UI). Web builds
     // have no settings files, so they keep the base.
     #[cfg(not(target_arch = "wasm32"))]
-    let t = if theme.id().as_str() == NOCTALIA_THEME_ID {
-        noctalia::tokens().unwrap_or(t)
-    } else {
-        t
-    };
+    let t = if theme.id().as_str() == NOCTALIA_THEME_ID { noctalia::tokens().unwrap_or(t) } else { t };
     ctx.data_mut(|d| d.insert_temp(egui::Id::unique("photocraft-theme"), t));
     let mut v = if t.dark() { Visuals::dark() } else { Visuals::light() };
     v.panel_fill = t.chrome;
@@ -1285,7 +1281,7 @@ mod tests;
 /// `"#rrggbb"`/`"#rrggbbaa"` values (radii and layout flags stay on the Studio base).
 #[cfg(not(target_arch = "wasm32"))]
 pub mod noctalia {
-    use super::{NOCTALIA_THEME_ID, Palette, Tokens};
+    use super::{Palette, Tokens};
     use std::ffi::OsString;
     use std::path::PathBuf;
 
@@ -1459,9 +1455,7 @@ pub mod live {
         /// Re-apply overrides if the file changed. Returns true when tokens were updated.
         pub fn poll(&mut self, ctx: &egui::Context, theme: &super::AppTheme) -> bool {
             // A manually pointed file (debug) wins over the theme's own live file.
-            let path = self.path.clone().or_else(|| {
-                (theme.id().as_str() == super::NOCTALIA_THEME_ID).then(super::noctalia::path).flatten()
-            });
+            let path = self.path.clone().or_else(|| (theme.id().as_str() == super::NOCTALIA_THEME_ID).then(super::noctalia::path).flatten());
             let Some(path) = path else { return false };
             let now = ctx.input(|i| i.time);
             if now - self.last_check < 0.4 {

@@ -1057,7 +1057,6 @@ mod patch_tool_history_names_tests;
 #[cfg(test)]
 mod polygon_lasso_tests;
 
-
 #[cfg(test)]
 mod window_frame_tests;
 

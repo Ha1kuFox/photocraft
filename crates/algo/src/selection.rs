@@ -380,7 +380,8 @@ enum MatchRule {
     /// The Magic Wand / Magic Eraser rule: colour and alpha each within Tolerance, except that
     /// two fully transparent pixels always match.
     Wand,
-    /// The Paint Bucket rule, see [`wand_region_bucket`].
+    /// The Paint Bucket rule: alpha-0 pixels never match and a semi-transparent seed uses the
+    /// largest-channel colour distance.
     Bucket,
 }
 
@@ -400,11 +401,7 @@ enum MatchRule {
 ///
 /// Only that one semi-transparent case was measured; unmeasured cases keep the previous
 /// behaviour. [`wand_region`] and [`wand_region_within`] are unchanged.
-pub(crate) fn wand_region_bucket(img: &[[u8; 4]], area: Rect, seed: (i32, i32), tolerance: f32, contiguous: bool, anti_alias: bool) -> Option<Region> {
-    region_by_rule(img, area, seed, tolerance, contiguous, anti_alias, None, ColorDistance::LargestChannel, MatchRule::Bucket, 0)
-}
-
-/// [`wand_region_bucket`] with `close_gap` (see [`wand_region_close_gap`]).
+/// The Paint Bucket's match rule with `close_gap` (see [`wand_region_close_gap`]).
 #[allow(clippy::too_many_arguments)]
 pub fn wand_region_bucket_close_gap(
     img: &[[u8; 4]],
