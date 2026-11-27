@@ -67,6 +67,7 @@ pub(super) fn members(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
     let entries = mode_entries(Tool::PaintBucket, true, false);
     let sources = [Entry::new(false, tl!("Foreground").to_owned()), Entry::new(true, tl!("Pattern").to_owned())];
+    let reference_layers = crate::canvas::paint_tool::reference_layers(app);
     let o = &mut app.ui.tool_options;
     labelled(ui, tl!("Fill"), |ui| Select::new(tl!("Source").to_owned(), Bind::bound(&mut o.bucket_fill_pattern), &sources).show(ui));
     let mut mode = if o.bucket_clear { PaintMode::Clear } else { PaintMode::Blend(o.bucket_blend_mode) };
@@ -87,5 +88,30 @@ pub(super) fn members(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
     check(ui, tl!("Anti-alias"), &mut o.anti_alias);
     check(ui, tl!("Contiguous"), &mut o.contiguous);
-    check(ui, tl!("All Layers"), &mut o.sample_all.paint_bucket);
+    let modes = [
+        Entry::new(0u8, tl!("Current Layer").to_owned()),
+        Entry::new(1u8, tl!("All Layers").to_owned()),
+        Entry::new(2u8, tl!("Reference Layer").to_owned()),
+    ];
+    let mut mode: u8 = match o.bucket_sample.as_str() {
+        "all" => 1,
+        "layer" => 2,
+        _ => 0,
+    };
+    labelled(ui, tl!("Sample"), |ui| Select::new(tl!("Sample").to_owned(), Bind::bound(&mut mode), &modes).show(ui));
+    let next = ["active", "all", "layer"][mode as usize];
+    if next != o.bucket_sample {
+        o.bucket_sample = next.into();
+    }
+    o.sample_all.paint_bucket = mode == 1;
+    if o.bucket_sample == "layer" {
+        let entries: Vec<Entry<u64>> = reference_layers.iter().map(|(id, name)| Entry::new(*id, name.clone())).collect();
+        labelled(ui, tl!("Layer"), |ui| Select::new(tl!("Reference Layer").to_owned(), Bind::bound(&mut o.bucket_sample_layer), &entries).show(ui));
+    }
+    if let Some(v) = number_field(ui, tl!("Expand Area"), o.bucket_expand, 0.0..=50.0, "px").landed() {
+        o.bucket_expand = *v;
+    }
+    if let Some(v) = number_field(ui, tl!("Close Gaps"), o.bucket_close_gap, 0.0..=20.0, "px").landed() {
+        o.bucket_close_gap = *v;
+    }
 }

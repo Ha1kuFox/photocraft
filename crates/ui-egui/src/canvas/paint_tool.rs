@@ -185,6 +185,29 @@ fn with_resize<R>(app: &mut PhotocraftApp, f: impl FnOnce(&mut crate::brush_resi
     out
 }
 
+/// Visible pixel layers of the active document as `(id, name)`, innermost last.
+pub(crate) fn reference_layers(app: &PhotocraftApp) -> Vec<(u64, String)> {
+    let Some(st) = app.session.active() else { return Vec::new() };
+    st.doc.layers.iter().filter(|l| l.surface().is_some()).map(|l| (l.id.0, l.name.clone())).collect()
+}
+
+/// The `sample` param of `paint.bucket`. A stale or unchosen reference layer falls back to the
+/// current layer with a status note, as in the reference implementation.
+fn bucket_sample(app: &mut PhotocraftApp, o: &crate::state::ToolOptions) -> serde_json::Value {
+    match o.bucket_sample.as_str() {
+        "all" => json!("all"),
+        "layer" if o.bucket_sample_layer != 0 && reference_layers(app).iter().any(|(id, _)| *id == o.bucket_sample_layer) => {
+            json!({ "layer": o.bucket_sample_layer })
+        }
+        "layer" => {
+            app.ui.status = tl!("The reference layer is gone — sampling the current layer").into();
+            app.ui.status_error = false;
+            json!("active")
+        }
+        _ => json!("active"),
+    }
+}
+
 /// A press the paint tool takes: the resize chord, the HUD Color Picker, a Mixer Brush load (a click
 /// that is done at once), or a stroke.
 /// A Paint Bucket or Magic Eraser press: the fill or the erase runs at the clicked pixel. Returns false for any other tool.
@@ -200,7 +223,10 @@ fn click_tool(app: &mut PhotocraftApp, tool: Tool, at: [f64; 2]) -> bool {
                 "tolerance": o.tolerance,
                 "contiguous": o.contiguous,
                 "antiAlias": o.anti_alias,
-                "sampleAllLayers": o.sample_all.paint_bucket,
+                "sampleAllLayers": o.bucket_sample == "all",
+                "sample": bucket_sample(app, &o),
+                "expand": o.bucket_expand.clamp(0.0, 50.0),
+                "closeGap": o.bucket_close_gap.clamp(0.0, 20.0),
                 "opacity": o.fill_opacity,
                 "contents": contents,
                 "mode": mode,

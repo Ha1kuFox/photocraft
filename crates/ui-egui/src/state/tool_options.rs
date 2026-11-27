@@ -63,6 +63,14 @@ pub struct ToolOptions {
     pub fill_opacity: f32,
     /// Paint Bucket fill source: false = Foreground colour, true = Pattern (Patterns panel selection).
     pub bucket_fill_pattern: bool,
+    /// Paint Bucket "Expand" (px): grow the sampled boundary, 0..50.
+    pub bucket_expand: f32,
+    /// Paint Bucket "Close gaps" (px): gaps up to that wide count as closed, 0..20.
+    pub bucket_close_gap: f32,
+    /// Paint Bucket sampling: "active", "all" or one named "layer" (`bucket_sample_layer`).
+    pub bucket_sample: String,
+    /// The sampled layer's id when `bucket_sample` is "layer" (0 = none chosen yet).
+    pub bucket_sample_layer: u64,
     /// Paint Bucket › Mode (any layer mode; Clear is `bucket_clear`).
     pub bucket_blend_mode: photocraft_color::BlendMode,
     /// Paint Bucket › Mode: Clear, which erases the filled area (see `brush_clear`).
@@ -464,6 +472,10 @@ impl Default for ToolOptions {
             gradient_blend_mode: photocraft_color::BlendMode::Normal,
             fill_opacity: 100.0,
             bucket_fill_pattern: false,
+            bucket_expand: 0.0,
+            bucket_close_gap: 0.0,
+            bucket_sample: "active".into(),
+            bucket_sample_layer: 0,
             bucket_blend_mode: photocraft_color::BlendMode::Normal,
             bucket_clear: false,
             type_font: "Inter".into(),

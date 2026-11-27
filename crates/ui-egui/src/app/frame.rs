@@ -75,8 +75,7 @@ impl PhotocraftApp {
         self.check_gpu(ctx);
         #[cfg(not(target_arch = "wasm32"))]
         if self.live_tokens.poll(ctx, &self.ui.theme) {
-            // The checker texture was cached for the old colours.
-            self.checker = None;
+            ctx.request_repaint();
         }
         #[cfg(not(target_arch = "wasm32"))]
         self.drain_control(ctx);

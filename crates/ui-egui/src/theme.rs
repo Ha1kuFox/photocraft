@@ -1433,6 +1433,7 @@ pub(crate) fn apply_overrides(t: &mut Tokens, v: &serde_json::Value) -> Vec<Stri
 #[cfg(not(target_arch = "wasm32"))]
 pub mod live {
     use super::Tokens;
+    use egui::Color32;
     use std::time::SystemTime;
 
     #[derive(Default)]

@@ -26,7 +26,6 @@ macro_rules! tl {
 }
 
 mod brush_mode_menu;
-pub mod bucket_ui;
 pub mod canvas;
 mod channel_titles;
 #[cfg(not(target_arch = "wasm32"))]
@@ -1058,14 +1057,6 @@ mod patch_tool_history_names_tests;
 #[cfg(test)]
 mod polygon_lasso_tests;
 
-#[cfg(test)]
-mod bucket_ui_tests;
-#[cfg(test)]
-mod hold_correct_tests;
-#[cfg(test)]
-mod layer_options_button_tests;
-#[cfg(test)]
-mod studio_options_tests;
 
 #[cfg(test)]
 mod window_frame_tests;
