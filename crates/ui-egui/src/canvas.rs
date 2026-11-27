@@ -38,6 +38,8 @@ pub(crate) mod filter_preview;
 pub mod gpu_canvas;
 mod gpu_picture;
 pub mod guide_select;
+#[cfg(test)]
+mod hold_correct_tests;
 pub mod layer_pick_ui;
 pub mod move_ui;
 mod navigator;

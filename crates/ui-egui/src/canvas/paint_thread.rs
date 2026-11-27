@@ -184,6 +184,30 @@ impl PaintThread {
         }
     }
 
+    /// Repaint the Brush's preview from `pts`, keeping its brush and seed (hold-to-correct).
+    /// The caller records the returned damage, so no step is queued for `catch_up`. Any points
+    /// still pending are dropped: they are already in `pts`.
+    pub(super) fn retarget(&mut self, pts: &[StrokePoint]) -> Option<Step> {
+        let (shown, result) = {
+            let mut st = self.wait_idle(Duration::MAX);
+            let result = match st.stroke.as_mut() {
+                Some(EngineStroke::Brush(live)) => live.retarget(pts),
+                _ => return None,
+            };
+            if result.is_ok() {
+                st.pending.clear();
+                if let Some(stroke) = st.stroke.as_ref() {
+                    st.shown = Shown::of(stroke);
+                }
+            } else {
+                st.failed = true;
+            }
+            (st.shown.clone(), result)
+        };
+        self.shown = shown;
+        Some(result)
+    }
+
     /// Wait up to `wait` for everything handed over to be painted; returns the steps painted since
     /// the last call, oldest first, and updates what `shown` shows.
     pub(super) fn catch_up(&mut self, wait: Duration) -> Vec<Step> {

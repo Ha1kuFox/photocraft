@@ -4,8 +4,8 @@
 use craft::draw::ui::symmetry::SymmetryCommand;
 use craft::draw::ui::{EraserMode, MixerLoad, MixerValues, PaintBar, PaintTool, PaintValues, Smoothing};
 use craft::theme::Srgba;
-use craft::ui::choice::SwatchImage;
-use craft::ui::contract::{Entry, MemoProps, MemoView, Outbox};
+use craft::ui::choice::{Checkbox, SwatchImage};
+use craft::ui::contract::{Bind, Entry, MemoProps, MemoView, Outbox, Props as _, Show as _};
 use craft::ui::dialog::{Alert, HostedAlert};
 use craft::ui::patterns::blend_keys::{BlendKeyEntry, blend_entries};
 use craft::ui::runtime::env::{Env, Label};
@@ -230,6 +230,8 @@ struct PaintProps<'a> {
     eraser: Option<EraserMode>,
     /// The symmetry menu, for the Brush, Pencil and Eraser.
     symmetry: Option<crate::symmetry_ui::MenuInput>,
+    /// Hold-to-correct, for the Brush, Pencil and Eraser.
+    hold_correct: Option<bool>,
     out: Outbox<'a, PaintEvent>,
 }
 
@@ -247,6 +249,8 @@ enum PaintEvent {
     OutOfRange(RangeAlert),
     /// The symmetry menu picked a command.
     Symmetry(SymmetryCommand),
+    /// Hold-to-correct was toggled.
+    HoldCorrect(bool),
 }
 
 /// Shows the members of `tool`'s bar; false for a tool without a paint bar. The picker field, the settings toggle and
@@ -269,6 +273,7 @@ pub(super) fn members(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) ->
         values: paint_values(app, tool, &app.session.tools.brush),
         eraser: (tool == Tool::Eraser).then(|| eraser_mode_of(&app.ui.tool_options.eraser_mode)),
         symmetry: matches!(tool, Tool::Brush | Tool::Pencil | Tool::Eraser).then(|| crate::symmetry_ui::menu_input(app, ui)),
+        hold_correct: matches!(tool, Tool::Brush | Tool::Pencil | Tool::Eraser).then(|| app.ui.tool_options.hold_correct),
         out: Outbox::new(&mut sent),
     };
     let _ = MemoView::new("paint-members", props, paint_view).show(ui);
@@ -297,6 +302,7 @@ pub(super) fn members(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) ->
                 }
             }
             PaintEvent::Symmetry(command) => crate::symmetry_ui::pick(app, ui.ctx(), command),
+            PaintEvent::HoldCorrect(on) => app.ui.tool_options.hold_correct = on,
         }
     }
     true
@@ -332,6 +338,11 @@ fn paint_view(props: &mut PaintProps<'_>, ui: &mut egui::Ui) {
         && let Some(command) = crate::symmetry_ui::show_menu(input, ui)
     {
         props.out.send(PaintEvent::Symmetry(command));
+    }
+    if let Some(hold) = props.hold_correct
+        && let Some(next) = Checkbox::new(Bind::given(hold)).label(Label::from(tl!("Hold to correct").to_string())).show(ui).value().copied()
+    {
+        props.out.send(PaintEvent::HoldCorrect(next));
     }
 }
 

@@ -1812,7 +1812,10 @@ impl Session {
         // Last-resort guard (AGENTS.md, Never crash): a command that panics anyway fails with an
         // error instead of taking the app down. `edit` only commits a document after its closure
         // returns, so the documents are unchanged.
-        self.live_commit = live_commit.filter(|live| live.cmd == id);
+        // `paint.correctStroke` takes a live stroke offered under the command it replaces
+        // (`strokeCommand`); the wrapper's own id is not the preview's command.
+        let stroke_command = (id == "paint.correctStroke").then(|| run_params.get("strokeCommand").and_then(Value::as_str)).flatten();
+        self.live_commit = live_commit.filter(|live| live.cmd == id || stroke_command == Some(live.cmd.as_str()));
         let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (spec.run)(self, &run_params)))
             .unwrap_or_else(|_| Err(EngineError::Other(format!("`{id}` failed with an internal error (logged); the document is unchanged"))));
         self.live_commit = None;

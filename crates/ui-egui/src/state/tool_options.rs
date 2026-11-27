@@ -299,6 +299,13 @@ pub struct ToolOptions {
     /// Pencil › Mode: Clear (see `brush_clear`).
     #[serde(default)]
     pub pencil_clear: bool,
+    /// Brush, Pencil and Eraser: hold the pointer still at the end of a stroke to fit it to a
+    /// line or shape (`photocraft_paint::correct`). The raw stroke stays one undo step back.
+    #[serde(default = "yes")]
+    pub hold_correct: bool,
+    /// Hold-to-correct dwell in milliseconds before the fit applies.
+    #[serde(default = "default_hold_correct_ms")]
+    pub hold_correct_ms: u32,
     /// Eraser › Mode: `brush` (soft, anti-aliased) or `pencil` (hard, aliased pixels, through
     /// `paint.pencil`), as in Photoshop's options bar (#2662).
     #[serde(default = "default_eraser_mode")]
@@ -358,6 +365,10 @@ fn default_curve_fit() -> f32 {
 
 fn default_eraser_mode() -> String {
     "brush".into()
+}
+
+fn default_hold_correct_ms() -> u32 {
+    500
 }
 
 fn default_marquee_style() -> String {
@@ -574,6 +585,8 @@ impl Default for ToolOptions {
             pencil_auto_erase: false,
             brush_clear: false,
             pencil_clear: false,
+            hold_correct: true,
+            hold_correct_ms: default_hold_correct_ms(),
             eraser_mode: default_eraser_mode(),
             erase_to_history: false,
             mixer_combination: 0,

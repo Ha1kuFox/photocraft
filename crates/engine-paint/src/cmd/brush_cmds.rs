@@ -1559,7 +1559,7 @@ pub fn specs() -> Vec<CommandSpec> {
         spec!(
             "paint.correctStroke",
             "Straighten Stroke",
-            r##"{"points":[…raw stroke points, as paint.stroke],"correctedPoints":[…fitted points],"strokeCommand":"paint.stroke"|"paint.pencil" (whose params these are),"seed":u64?=the live stroke's (takes its offer: the raw stroke commits first, then the fitted one replaces it, so undo steps back to the raw stroke; without an offer, or with symmetry, only the raw stroke commits and "corrected" is false)}"##,
+            r##"{"points":[…raw stroke points, as paint.stroke],"correctedPoints":[…fitted points],"strokeCommand":"paint.stroke"|"paint.pencil" (whose params these are),"brush":{…}?,"preset":name?,"size":0.5..5000 px?,"opacity":0..1?,"color":"#rrggbb"?=foreground,"mode":"normal|multiply|screen|…|behind (paints beneath existing pixels)|clear (erases with this brush)"="normal","erase":bool?,"block":bool=false (a hard 16×16 screen-px square, 16/zoom doc px; size, opacity, flow, hardness and dynamics ignored: the Eraser's Block mode),"zoom":view zoom=1,"autoErase":bool=false,"seed":u64?=the live stroke's (takes its offer: the raw stroke commits first, then the fitted one replaces it, so undo steps back to the raw stroke; without an offer, or with symmetry, only the raw stroke commits and "corrected" is false),"target":"pixels"|"mask"|"filterMask"|"quickMask"|{"channel":i}=Channels panel target}"##,
             has_paintable,
             correct_stroke,
             true

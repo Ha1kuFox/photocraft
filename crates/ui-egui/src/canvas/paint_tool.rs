@@ -61,12 +61,31 @@ pub(crate) struct PaintStroke {
     /// A ⇧-click line from the previous stroke's end. Smoothing doesn't apply to it, so it ends
     /// at the click whatever Catch-up on Stroke End is set to, as in Photoshop (#11887).
     pub(crate) line: bool,
+    /// Hold-to-correct dwell tracker: anchor position, the time it was set, and the point count
+    /// a fit was last attempted with (a still stroke fits at most once per length).
+    pub(crate) hold_anchor: Option<([f64; 2], f64, usize)>,
+    /// Hold-to-correct fit in progress; on release it commits raw then fitted as two undo steps.
+    pub(crate) correcting: Option<super::strokes::Correcting>,
 }
 
 impl PaintStroke {
     /// A stroke of `tool` that began at `start` with `points`, pressed with `modifiers`.
     fn new(tool: Tool, start: [f64; 2], points: Vec<[f64; 3]>, modifiers: Mods, erase: bool) -> Self {
-        Self { tool, history_params: None, start, points, modifiers, live: modifiers, released: Mods::NONE, erase, clear: false, constrain: None, line: false }
+        Self {
+            tool,
+            history_params: None,
+            start,
+            points,
+            modifiers,
+            live: modifiers,
+            released: Mods::NONE,
+            erase,
+            clear: false,
+            constrain: None,
+            line: false,
+            hold_anchor: None,
+            correcting: None,
+        }
     }
 
     /// Records the modifiers of a pointer of the gesture.
@@ -350,15 +369,21 @@ impl CanvasTool for PaintTool<'_> {
             crate::brush_cursor::sync_tip(app);
             // The readout request lasts one pass: a pass without pointer input repeats it.
             app.brush_resize.hud(cx);
-            let Some(stroke) = state.stroke.as_ref() else { return };
-            let stale_mixer =
-                stroke.tool == Tool::MixerBrush && app.live_stroke.is_some() && app.session.active_index().is_none_or(|idx| live_stroke(app, idx).is_none());
+            let stale_mixer = state.stroke.as_ref().is_some_and(|stroke| {
+                stroke.tool == Tool::MixerBrush && app.live_stroke.is_some() && app.session.active_index().is_none_or(|idx| live_stroke(app, idx).is_none())
+            });
             if stale_mixer {
                 drop_stroke(app, state);
                 return;
             }
+            let Some(stroke) = state.stroke.as_mut() else { return };
+            // A held pointer is time, not more pen points: fit the gesture after the dwell and
+            // keep repainting until then so the dwell advances without a wall-clock sleep.
+            super::strokes::tick_hold_correct(app, stroke, now_ms);
+            if super::strokes::hold_correct_pending(app, stroke) {
+                app.ctx().request_repaint_after(Duration::from_millis(HOLD_REPEAT_MS as u64));
+            }
             if hold_due(app, now_ms) {
-                let Some(stroke) = state.stroke.as_mut() else { return };
                 let at = stroke.points.last().map_or(stroke.start, |p| [p[0], p[1]]);
                 app.stylus.repeat_point(now_ms);
                 stroke.points.push([at[0], at[1], f64::from(app.stylus.pressure())]);
